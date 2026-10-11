@@ -1,0 +1,2255 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kie Cover Studio - AI Powered</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dsp: {
+                            bg: '#0A0D14',
+                            panel: '#151822',
+                            panelHover: '#1c212e',
+                            border: '#252a3a',
+                            accent: '#3b82f6',
+                            text: '#f8fafc',
+                            muted: '#94a3b8',
+                            vocal: '#ec4899',
+                            music: '#10b981',
+                            ai: '#d97757'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+                    },
+                    animation: {
+                        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'fade-in': 'fadeIn 0.2s ease-out forwards',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        slideUp: {
+                            '0%': { transform: 'translateY(100%)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- For exporting DSP Audio -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        html, body {
+            height: 100%;
+            height: 100dvh;
+            background-color: #0A0D14;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #252a3a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+
+        /* Sliders */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #252a3a;
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            border: 2px solid #3b82f6;
+        }
+        .slider-vocal::-webkit-slider-thumb { border-color: #ec4899; }
+        .slider-music::-webkit-slider-thumb { border-color: #10b981; }
+
+        .hide-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+
+        .viz-bg {
+            background-image: 
+                linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-position: center bottom;
+        }
+
+        .glass-panel {
+            background: rgba(21, 24, 34, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        /* Custom Toggles */
+        .toggle-checkbox:checked { right: 0; border-color: #3b82f6; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
+        .toggle-vocal:checked { border-color: #ec4899; }
+        .toggle-vocal:checked + .toggle-label { background-color: #ec4899; }
+        .toggle-music:checked { border-color: #10b981; }
+        .toggle-music:checked + .toggle-label { background-color: #10b981; }
+    </style>
+</head>
+<body class="flex justify-center h-screen w-screen overflow-hidden text-dsp-text bg-dsp-bg">
+
+    <div id="root" class="w-full h-full max-w-3xl relative flex flex-col shadow-2xl overflow-hidden bg-[#0A0D14]"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- Kie AI (GPT-6 Luna, format OpenAI Responses) ---
+        const KIE_URL = 'https://api.kie.ai/codex/v1/responses'; // GPT-6 Luna (format OpenAI Responses)
+        const KIE_TIMEOUT_MS = 150000; // batas tunggu per percobaan
+        const KIE_ATTEMPTS = [
+            { model: 'gpt-6-luna', effort: 'low' },
+            { model: 'gpt-6-luna', effort: 'low' }
+        ];
+
+        // --- Kie AI (Suno: Upload & Cover) ---
+        const KIE_SUNO_URL = 'https://api.kie.ai/api/v1/generate/upload-cover';
+        const KIE_SUNO_INFO = 'https://api.kie.ai/api/v1/generate/record-info';
+        const KIE_SUNO_MODEL = 'V6';
+        // Kie mewajibkan callBackUrl; hasil diambil lewat polling, jadi alamat ini hanya formalitas (bisa diganti di Pengaturan)
+        const KIE_DEFAULT_CALLBACK = 'https://example.com/callback';
+        const KIE_UPLOAD_ENDPOINTS = [
+            { kind: 'stream', url: 'https://kieai.redpandaai.co/api/file-stream-upload' },
+            { kind: 'base64', url: 'https://kieai.redpandaai.co/api/file-base64-upload' },
+            { kind: 'base64', url: 'https://api.kie.ai/api/v1/file-base64-upload' }
+        ];
+
+        const SUNO_STAGES = ['Format lirik (AI)', 'Render audio DSP', 'Kompres ke MP3', 'Unggah ke Kie AI', 'Kirim tugas ke Suno', 'Suno memproses'];
+        const STYLE_MAX = 1000;  // batas style Kie untuk model V5/V5.5 (V6 belum tercantum di dokumen Kie)
+        const LYRICS_MAX = 5000; // batas lirik (prompt) Kie untuk model V4.5 ke atas
+        const LIB_KEY = 'kie_library_v1';
+        const loadLib = () => { try { const l = JSON.parse(localStorage.getItem(LIB_KEY)); if (l) return { uploads: l.uploads || [], covers: l.covers || [] }; } catch (e) {} return { uploads: [], covers: [] }; };
+        const idb = (mode, fn) => new Promise((res, rej) => {
+            try {
+                const r = indexedDB.open('kie_cover_studio', 1);
+                r.onupgradeneeded = () => r.result.createObjectStore('audio');
+                r.onerror = () => rej(r.error);
+                r.onsuccess = () => { const tx = r.result.transaction('audio', mode); const q = fn(tx.objectStore('audio')); tx.oncomplete = () => res(q ? q.result : undefined); tx.onerror = () => rej(tx.error); };
+            } catch (e) { rej(e); }
+        });
+        const idbPut = (id, blob) => idb('readwrite', st => st.put(blob, id));
+        const idbGet = (id) => idb('readonly', st => st.get(id));
+        const idbDel = (id) => idb('readwrite', st => st.delete(id));
+
+        // Hilangkan spasi/newline/prefix "Bearer " yang sering ikut ter-paste (bikin header fetch error)
+        const cleanKey = (k) => String(k || '').replace(/^\s*Bearer\s+/i, '').replace(/\s+/g, '');
+
+        const fetchWithTimeout = async (url, opts = {}, ms = 15000) => {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), ms);
+            try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+            finally { clearTimeout(timer); }
+        };
+
+        // Ambil teks dari respons Kie (OpenAI Responses/Chat, atau dibungkus {data: ...})
+        function extractText(data) {
+            if (!data) return '';
+            if (Array.isArray(data.output)) return data.output.filter(o => o && o.type === 'message').flatMap(o => Array.isArray(o.content) ? o.content : []).filter(c => c && c.type === 'output_text').map(c => c.text).join('');
+            if (Array.isArray(data.content)) return data.content.filter(b => b && b.type === 'text').map(b => b.text).join('');
+            if (typeof data.content === 'string') return data.content;
+            const c = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+            if (typeof c === 'string') return c;
+            if (data.data && typeof data.data === 'object') return extractText(data.data);
+            return '';
+        }
+
+        // ---- Lirik: system prompt "lyric formatter" Suno (pisah suku kata + label bagian). Hasilnya langsung dikirim ke Suno. ----
+        const FORMAT_PROMPT = `You are an expert lyric formatter specializing in preparing song lyrics for Suno AI music generation. Your primary task is to transform user-provided lyrics into a Suno-friendly format with clear song sections and syllable separation to help improve vocal pronunciation.
+
+MAIN OBJECTIVE
+
+Whenever the user sends song lyrics, immediately process them and return the formatted lyrics. Do not ask follow-up questions unless the input is genuinely impossible to interpret.
+
+RULES
+
+1. PRESERVE THE ORIGINAL LYRICS
+
+- Preserve the original language, meaning, words, and lyrical content.
+- Do not translate, paraphrase, rewrite, or add new lyrical lines.
+- Do not remove repeated lines.
+- Do not invent lyrics to fill missing sections.
+- Only modify syllable formatting, line breaks, and section labels.
+- Preserve the original order of all lyrics.
+
+2. SYLLABLE SEPARATION
+
+- Separate words into natural syllables using hyphens.
+- Examples:
+  - kepala → ke-pa-la
+  - pundak → pun-dak
+  - lutut → lu-tut
+  - kaki → ka-ki
+  - mata → ma-ta
+  - telinga → te-li-nga
+  - hidung → hi-dung
+- Apply syllable separation consistently throughout the lyrics.
+- Do not place square brackets around individual words or syllables.
+- Do not separate every individual letter.
+- Keep words that are already monosyllabic intact.
+- Use the correct syllable boundaries for the language of the lyrics.
+- Do not use syllable separation that changes the intended pronunciation or meaning.
+- For unfamiliar words, names, dialects, or ambiguous pronunciations, use the most reasonable linguistic syllable division without changing the spelling.
+
+3. SONG SECTION LABELS
+
+Use English section labels in square brackets because the output is intended for Suno.
+
+Choose section labels according to the original lyrics and their structure, such as:
+[Intro]
+[Verse 1]
+[Verse 2]
+[Pre-Chorus]
+[Chorus]
+[Post-Chorus]
+[Instrumental Break]
+[Bridge]
+[Final Chorus]
+[Outro]
+[End]
+
+- Preserve any existing section structure whenever possible.
+- If section labels are missing, infer a reasonable structure from the lyrics.
+- Do not create extra verses or choruses that are not supported by the original lyrics.
+- Repeat lines only when they are repeated in the source lyrics or when the original structure clearly indicates a repeated section.
+- Use [Instrumental] or [Instrumental Break] only when supported by the original structure or when the user explicitly requests an instrumental section.
+- Keep section labels separate from the lyrics.
+- Do not put pronunciation instructions inside individual lyric lines.
+
+4. SUNO-FRIENDLY FORMATTING
+
+- Put each lyric line on its own line.
+- Avoid unnecessary punctuation, decorative symbols, emojis, and explanatory notes.
+- Do not add pitch arrows, phonetic symbols, invisible Unicode characters, or decorative Unicode lettering.
+- Do not put square brackets around individual lyric words.
+- Use hyphens only for syllable separation within words.
+- Do not use commas or exclamation marks unless they are important to the original lyrics or explicitly requested.
+- Make the output clean and ready to copy directly into Suno Custom Mode.
+
+5. SONG STYLE AND VOCAL INSTRUCTIONS
+
+- Do not insert genre, mood, vocal style, tempo, or pitch instructions into the lyrics unless the user requests them.
+- If the user provides a separate style prompt, preserve it separately from the lyrics.
+- If the user asks for a Suno style prompt, provide it in a separate section and write that prompt in English.
+- For pronunciation assistance, prefer a separate style prompt containing descriptions such as:
+  "Clear Indonesian pronunciation, carefully articulated syllables, natural Indonesian vowels, crisp consonants, smooth connected singing, easy-to-follow vocal delivery."
+- Do not claim that syllable separation guarantees correct pronunciation.
+
+6. LANGUAGE HANDLING
+
+- Keep the lyrics in their original language.
+- Use English for section labels.
+- Do not translate lyrics into English.
+- Apply language-appropriate syllabification for Indonesian, Javanese, English, or other languages.
+- Preserve dialect words, colloquial expressions, and regional vocabulary.
+
+7. OUTPUT FORMAT
+
+- Return only the completed, formatted lyrics in a single copy-ready block.
+- Do not provide an introduction, explanation, analysis, summary, or closing message.
+- Do not describe the changes you made.
+- Do not ask whether the user wants another version.
+- If the user sends lyrics already formatted with section labels, refine the formatting without unnecessarily changing the existing structure.
+
+WORKFLOW
+
+When the user submits lyrics:
+
+1. Identify the language and preserve the original wording.
+2. Identify existing song sections and repeated lines.
+3. Divide multisyllabic words into natural syllables using hyphens.
+4. Apply or refine English section labels where appropriate.
+5. Check that no original lyric lines have been lost, translated, or unintentionally duplicated.
+6. Return the formatted lyrics only.
+
+PRIORITY
+
+Accuracy and preservation of the original lyrics come first. Syllable separation and song structure are formatting aids, not permission to rewrite the song.
+
+Begin processing immediately whenever the user submits song lyrics.`;
+
+        const buildFormatPrompt = (lyrics) => FORMAT_PROMPT + '\n\nLYRICS:\n' + lyrics;
+
+        // Perkiraan panjang lirik setelah tanda hubung suku kata (tiap kata menambah ±(jumlah gugus vokal - 1) karakter)
+        const estFormatted = (t) => {
+            const x = String(t || '').trim(); if (!x) return 0;
+            const hy = (x.match(/[A-Za-z\u00C0-\u00FF]+/g) || []).reduce((n, w) => n + Math.max(0, (w.match(/[aeiouyAEIOUY]+/g) || []).length - 1), 0);
+            return x.length + hy;
+        };
+
+        // Hash ringan (2x32 bit) untuk tanda tangan "input sama persis" (hemat kredit)
+        const hash36 = (str) => { let a = 5381, b = 2166136261; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); a = ((a << 5) + a + c) | 0; b = Math.imul(b ^ c, 16777619); } return (a >>> 0).toString(36) + (b >>> 0).toString(36); };
+
+        // ---- Vokal: pilihan UI -> tag style (otomatis, tanpa AI) ----
+        const VOCAL_AGES = [
+            { id: 'child', l: 'Anak-anak', tags: ['child-like playful voice', 'kids vocals'] },
+            { id: 'teen', l: 'Remaja', tags: ['youthful', 'bright'] },
+            { id: 'adult', l: 'Dewasa', tags: [] },
+            { id: 'mature', l: 'Dewasa matang', tags: ['mature voice'] }
+        ];
+        const VOCAL_RANGES = { f: ['soprano', 'mezzo-soprano', 'alto'], m: ['tenor', 'baritone', 'bass'] };
+        const VOCAL_TRAITS = [
+            ['warm', 'Hangat', 'warm tone'], ['smooth', 'Halus', 'smooth delivery'], ['bright', 'Cerah', 'bright tone'],
+            ['soft', 'Lembut', 'soft intimate delivery'], ['breathy', 'Breathy', 'breathy'], ['airy', 'Airy', 'airy'],
+            ['silky', 'Silky', 'silky'], ['ethereal', 'Ethereal', 'ethereal'], ['raspy', 'Serak', 'raspy'],
+            ['husky', 'Husky', 'husky'], ['gritty', 'Kasar', 'gritty'], ['powerful', 'Bertenaga', 'powerful belting'],
+            ['soulful', 'Soulful', 'soulful'], ['sultry', 'Sultry', 'sultry'], ['falsetto', 'Falsetto', 'natural falsetto']
+        ].map(([id, l, tag]) => ({ id, l, tag }));
+        const V_GENTLE = ['soft', 'breathy', 'airy', 'silky', 'ethereal'], V_STRONG = ['powerful', 'gritty', 'raspy'], V_YOUNG_BLOCK = ['sultry', 'husky', 'gritty', 'raspy'];
+        const vocalConflict = (a, b) => (V_GENTLE.includes(a) && V_STRONG.includes(b)) || (V_STRONG.includes(a) && V_GENTLE.includes(b));
+        const traitBlocked = (id, v) => {
+            if (v.traits.includes(id)) return false;
+            if (v.traits.length >= 2) return true; // 4-7 deskriptor total itu batas efektif Suno
+            if (v.traits.some(t => vocalConflict(t, id))) return true;
+            if (['child', 'teen'].includes(v.age) && V_YOUNG_BLOCK.includes(id)) return true;
+            if (id === 'falsetto' && v.genders.length === 1 && v.genders[0] === 'f') return true;
+            return false;
+        };
+        function vocalTagList(v) {
+            if (!v || !v.genders.length) return [];
+            const t = [v.genders.length === 2 ? 'male and female duet vocals' : (v.genders[0] === 'f' ? 'female vocals' : 'male vocals')];
+            const age = VOCAL_AGES.find(a => a.id === v.age); if (age) t.push(...age.tags);
+            if (v.range) t.push(`${v.range} vocals`);
+            v.traits.forEach(id => { const x = VOCAL_TRAITS.find(y => y.id === id); if (x) t.push(x.tag); });
+            return [...new Set(t)];
+        }
+        // Tag vokal selalu di DEPAN style (deskriptor awal paling berpengaruh; yang terkubur di akhir sering diabaikan Suno)
+        function composeStyle(raw, tags) {
+            const base = String(raw || '').trim(), low = base.toLowerCase();
+            const miss = (tags || []).filter(t => !low.includes(t.toLowerCase()));
+            return [...miss, base].filter(Boolean).join(', ').slice(0, STYLE_MAX);
+        }
+
+        // Balasan AI = teks lirik berlabel. Bersihkan pagar kode; jika ternyata JSON {"lyrics": ...}, ambil isinya;
+        // lalu rapikan label (satu baris sendiri, baris kosong antar bagian) sebagai jaring pengaman.
+        function parseLyricsResponse(raw) {
+            let text = String(raw || '').trim();
+            text = text.replace(/^```[a-zA-Z]*\s*/, '').replace(/\s*```$/, '').trim();
+            if (text.startsWith('{')) {
+                try {
+                    const o = JSON.parse(text);
+                    const v = o && (o.lyrics ?? o.lirik ?? o.text);
+                    if (typeof v === 'string' && v.trim()) text = v.trim();
+                } catch (e) { /* bukan JSON, pakai teks apa adanya */ }
+            }
+            text = text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n');
+            // label struktur yang menempel di ujung baris lirik -> pindah ke baris sendiri
+            text = text.replace(/([^\n])[ \t]*(\[(?:Intro|Verse|Pre-?Chorus|Post-?Chorus|Final Chorus|Chorus|Hook|Bridge|Instrumental|Interlude|Break|Solo|Outro|End)[^\]\n]{0,30}\])/gi, '$1\n$2');
+            // lirik yang menempel di belakang label -> pindah ke baris berikutnya
+            text = text.replace(/^([ \t]*\[[^\]\n]{1,40}\])[ \t]+(?=\S)/gm, '$1\n');
+            // pastikan ada baris kosong sebelum tiap label
+            text = text.replace(/([^\n])\n(\[[^\]\n]{1,40}\])/g, '$1\n\n$2');
+            text = text.replace(/([^\n])\n(\[[^\]\n]{1,40}\])/g, '$1\n\n$2'); // ulangi: label berurutan tidak ikut terproses di putaran pertama
+            return text.replace(/\n{3,}/g, '\n\n').trim();
+        }
+
+        function buildStylePrompt(style, o) {
+            const tags = o.tags || [];
+            const vocalRule = tags.length
+                ? `VOCAL: the app itself puts these vocal tags at the very start of the final style: "${tags.join(', ')}". Do NOT write any vocal descriptor in your output (no gender, age, range, vocal timbre, "vocals", "voice", duet, choir) and ignore vocal statements in the user description; the chosen vocal wins. Pick genre, mood, instruments and production that suit this voice.`
+                : 'VOCAL: no vocal was chosen. Add exactly ONE clear vocal descriptor right after the genre (for example "warm female vocals") that fits the description and the lyric language.';
+            return [
+                'You are a Suno prompt specialist. Convert the user description into a Suno STYLE prompt for an Upload & Cover task: the melody stays from the uploaded audio, you are designing a new arrangement and sound.',
+                '',
+                `USER DESCRIPTION: ${style}`,
+                `LYRIC SNIPPET (only to detect language and mood, never copy it): ${String(o.lyrics || '').replace(/\s+/g, ' ').slice(0, 400) || '(empty: follow the language of the description)'}`,
+                vocalRule,
+                '',
+                'HOW SUNO READS THE STYLE FIELD (follow strictly):',
+                '- Plain comma-separated descriptors, never sentences. No brackets, no section tags, no lyrics, no artist or song names.',
+                '- Order is weight: the earliest descriptors count most. Use this order: genre (+ era or subgenre), energy/tempo, mood, 2-3 key instruments, production texture.',
+                '- Total 4-7 descriptors (vocal tags not counted). Above that they start cancelling each other. One main genre, at most one secondary genre.',
+                '- Never combine contradictions (calm + aggressive, lo-fi + polished cinematic, whispered + anthemic). If the user description contradicts itself, keep the part they stressed most.',
+                '- Specific mood words work better than technical terms or vague words: "warm, nostalgic, hopeful" instead of "sad" or "dark" alone.',
+                '- The melody and tempo come from the uploaded audio: give an energy word (slow, mid-tempo, upbeat) and write a BPM number ONLY if the user gave one.',
+                '- Name instruments precisely (acoustic guitar, upright piano, soft strings). Production: one short texture phrase (clean mix, soft reverb, live feel).',
+                '- Exclusions ("no X"): only if the user asked, maximum two.',
+                '- Keep the user intent. Fill empty slots with consistent choices. Never add elements that contradict the request.',
+                '',
+                `LENGTH: 120-350 characters, hard maximum ${Math.max(100, STYLE_MAX - tags.join(', ').length - 2)}. Write in English.`,
+                'OUTPUT: valid JSON {"style": "..."} only, no other text, no markdown.'
+            ].join('\n');
+        }
+
+        function parseStyleResponse(raw) {
+            const t = String(raw || '').replace(/```json|```/gi, '').trim();
+            const m = t.match(/\{[\s\S]*\}/);
+            if (m) {
+                try { const o = JSON.parse(m[0]); if (o && o.style) return String(o.style).trim(); } catch (e) {}
+                const r = m[0].match(/"style"\s*:\s*"([\s\S]*?)"\s*\}/);
+                if (r) return r[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim();
+            }
+            return t.replace(/^style\s*:\s*/i, '').replace(/\s*\n\s*/g, ' ').trim();
+        }
+
+        function makeDistCurve(amount) {
+            let k = amount, n = 44100, curve = new Float32Array(n), deg = Math.PI / 180;
+            for (let i = 0; i < n; ++i) {
+                let x = (i * 2 / n) - 1;
+                curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+            }
+            return curve;
+        }
+
+        function makeCrushCurve(bits) {
+            let n = 44100, curve = new Float32Array(n);
+            let steps = Math.pow(2, bits);
+            for(let i=0; i<n; i++) {
+                let x = (i * 2 / n) - 1;
+                curve[i] = Math.round(x * steps) / steps;
+            }
+            return curve;
+        }
+
+        function buildEffectChain(ctx, activeDistortions) {
+            let input = ctx.createGain();
+            let current = input;
+            let nodes = [input];
+            const dists = [...activeDistortions].sort((a,b) => a - b);
+
+            dists.forEach(d => {
+                let fxIn = ctx.createGain(), fxOut = ctx.createGain();
+                current.connect(fxIn);
+                if (d === 1) { let ws = ctx.createWaveShaper(); ws.curve = makeDistCurve(50); fxIn.connect(ws); ws.connect(fxOut); nodes.push(ws); }
+                else if (d === 2) { let ws = ctx.createWaveShaper(); ws.curve = makeDistCurve(400); fxIn.connect(ws); ws.connect(fxOut); nodes.push(ws); }
+                else if (d === 3) { let ws = ctx.createWaveShaper(); ws.curve = makeCrushCurve(4); fxIn.connect(ws); ws.connect(fxOut); nodes.push(ws); }
+                nodes.push(fxIn, fxOut);
+                current = fxOut;
+            });
+            let output = ctx.createGain(); current.connect(output); nodes.push(output);
+            return { input, output, nodes };
+        }
+
+        class AudioEngine {
+            constructor() {
+                this.ctx = null; // initialized on interaction
+                this.originalBuffer = null;
+                this.vocalBuffer = null;
+                this.musicBuffer = null;
+                this.duration = 0;
+                this.isPlaying = false;
+                this.isMono = false;
+                this.loadedKey = null;
+                this.vocalSource = null;
+                this.musicSource = null;
+                this.startTime = 0;
+                this.pauseTime = 0;
+                this.tracks = {
+                    vocal: { muted: false, volume: 1, activeDistortions: [], activeLevel: null, volumeNode: null, effectNodes: [] },
+                    music: { muted: false, volume: 1, activeDistortions: [], activeLevel: null, volumeNode: null, effectNodes: [] }
+                };
+            }
+
+            initCtx() {
+                if(!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.connect(this.ctx.destination);
+                    this.vocalAnalyser = this.ctx.createAnalyser();
+                    this.musicAnalyser = this.ctx.createAnalyser();
+                    this.vocalAnalyser.fftSize = 256;
+                    this.musicAnalyser.fftSize = 256;
+                    this.vocalAnalyser.connect(this.masterGain);
+                    this.musicAnalyser.connect(this.masterGain);
+                }
+                if(this.ctx.state === 'suspended') this.ctx.resume();
+            }
+
+            static fileKey(file) { return `${file.name}|${file.size}|${file.lastModified}`; }
+
+            async loadAudio(file, onProgress = () => {}) {
+                this.initCtx();
+                const key = AudioEngine.fileKey(file);
+                // File yang sama sudah dimuat: jangan decode ulang (state volume/efek tetap)
+                if (this.loadedKey === key && this.vocalBuffer && this.musicBuffer) {
+                    onProgress(100, "Selesai");
+                    return;
+                }
+                this.stop();
+                this.pauseTime = 0;
+                this.loadedKey = null;
+                this.originalBuffer = this.vocalBuffer = this.musicBuffer = null;
+
+                onProgress(10, "Membaca file audio...");
+                const arrayBuffer = await file.arrayBuffer();
+                onProgress(40, "Mendekode data audio...");
+                // Bentuk callback + promise agar kompatibel dengan Safari lama
+                this.originalBuffer = await new Promise((resolve, reject) => {
+                    const p = this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
+                    if (p && p.catch) p.catch(reject);
+                });
+                this.duration = this.originalBuffer.duration;
+                this.isMono = this.originalBuffer.numberOfChannels < 2;
+                onProgress(70, "Memisahkan stems (Simulasi L/R)...");
+                this.splitAudio();
+                onProgress(90, "Menyiapkan engine DSP...");
+                this.initBaseNodes();
+                this.loadedKey = key;
+                onProgress(100, "Selesai");
+            }
+
+            splitAudio() {
+                const sr = this.originalBuffer.sampleRate, len = this.originalBuffer.length;
+                this.vocalBuffer = this.ctx.createBuffer(1, len, sr);
+                this.musicBuffer = this.ctx.createBuffer(2, len, sr);
+                const L = this.originalBuffer.getChannelData(0);
+                const R = this.originalBuffer.numberOfChannels > 1 ? this.originalBuffer.getChannelData(1) : L;
+                const vocData = this.vocalBuffer.getChannelData(0);
+                const musL = this.musicBuffer.getChannelData(0), musR = this.musicBuffer.getChannelData(1);
+
+                // Simple pseudo-stem split based on mono sum/diff (L/R)
+                for (let i = 0; i < len; i++) {
+                    vocData[i] = (L[i] + R[i]) * 0.5;
+                    musL[i] = L[i] - vocData[i];
+                    musR[i] = R[i] - vocData[i];
+                }
+            }
+
+            initBaseNodes() {
+                ['vocal', 'music'].forEach(name => {
+                    const track = this.tracks[name];
+                    const first = !track.volumeNode;
+                    if (first) track.volumeNode = this.ctx.createGain();
+                    // Terapkan ulang volume/mute yang sudah dipilih user
+                    track.volumeNode.gain.value = track.muted ? 0 : track.volume;
+                    if (first) this.rebuildTrackEffects(name);
+                });
+            }
+
+            rebuildTrackEffects(trackName) {
+                const track = this.tracks[trackName];
+                if (track.effectNodes) track.effectNodes.forEach(n => { try { n.disconnect(); if (n.stop) n.stop(); } catch(e) {} });
+                const chain = buildEffectChain(this.ctx, track.activeDistortions);
+                track.effectNodes = chain.nodes;
+                track.volumeNode.disconnect();
+                track.volumeNode.connect(chain.input);
+                chain.output.connect(trackName === 'vocal' ? this.vocalAnalyser : this.musicAnalyser);
+            }
+
+            setTrackVolume(trackName, volume, muted) {
+                this.tracks[trackName].volume = volume;
+                this.tracks[trackName].muted = muted;
+                if (this.tracks[trackName].volumeNode) {
+                    this.tracks[trackName].volumeNode.gain.value = muted ? 0 : volume;
+                }
+            }
+
+            setDistortionLevel(trackName, level) {
+                const track = this.tracks[trackName];
+                track.activeLevel = (track.activeLevel === level) ? null : level;
+                if(track.activeLevel === null) track.activeDistortions = [];
+                else if (level === 'low') track.activeDistortions = [1];
+                else if (level === 'medium') track.activeDistortions = [2];
+                else if (level === 'hard') track.activeDistortions = [3];
+                if (track.volumeNode) this.rebuildTrackEffects(trackName);
+                return track.activeLevel;
+            }
+
+            stopSources() {
+                ['vocalSource', 'musicSource'].forEach(k => {
+                    if (this[k]) {
+                        try { this[k].stop(); } catch(e) {}
+                        try { this[k].disconnect(); } catch(e) {}
+                        this[k] = null;
+                    }
+                });
+            }
+
+            play(offset = 0) {
+                if (!this.vocalBuffer || !this.musicBuffer || !this.tracks.vocal.volumeNode) return false;
+                this.initCtx();
+                this.stopSources(); // cegah dua source main bersamaan
+                if (!(offset >= 0) || offset >= this.duration) offset = 0;
+                this.vocalSource = this.ctx.createBufferSource(); this.vocalSource.buffer = this.vocalBuffer;
+                this.vocalSource.connect(this.tracks.vocal.volumeNode);
+                this.musicSource = this.ctx.createBufferSource(); this.musicSource.buffer = this.musicBuffer;
+                this.musicSource.connect(this.tracks.music.volumeNode);
+                this.startTime = this.ctx.currentTime - offset;
+                this.vocalSource.start(0, offset); this.musicSource.start(0, offset);
+                this.isPlaying = true;
+                return true;
+            }
+
+            stop() {
+                // Hitung posisi hanya jika memang sedang main (sebelumnya menghasilkan nilai sampah)
+                if (this.isPlaying && this.ctx) {
+                    this.pauseTime = Math.max(0, Math.min(this.ctx.currentTime - this.startTime, this.duration));
+                }
+                this.stopSources();
+                this.isPlaying = false;
+            }
+
+            seek(percent) {
+                const time = Math.max(0, Math.min(100, percent)) / 100 * this.duration;
+                if (this.isPlaying) { this.stop(); this.play(time); }
+                else { this.pauseTime = time; }
+            }
+
+            getCurrentTime() {
+                if (!this.isPlaying || !this.ctx) return this.pauseTime;
+                const t = this.ctx.currentTime - this.startTime;
+                if (t >= this.duration) { this.stopSources(); this.isPlaying = false; this.pauseTime = 0; return 0; }
+                return t;
+            }
+        }
+
+        // Global Engine instance
+        const engine = new AudioEngine();
+
+        // ===== Render audio HASIL DSP (volume/mute + Drive/Fuzz/Crush tiap track) jadi file =====
+        async function renderDspBuffer(eng) {
+            if (!eng.vocalBuffer || !eng.musicBuffer) throw new Error("Audio DSP belum dimuat");
+            const origSr = eng.originalBuffer.sampleRate;
+            const sr = [44100, 48000, 32000].includes(origSr) ? origSr : 44100; // sample rate yang didukung encoder MP3
+            const len = Math.ceil(eng.duration * sr);
+            const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            const off = new OAC(2, len, sr);
+            const master = off.createGain(); master.connect(off.destination);
+            [['vocal', eng.vocalBuffer], ['music', eng.musicBuffer]].forEach(([name, buf]) => {
+                const t = eng.tracks[name];
+                const src = off.createBufferSource(); src.buffer = buf;
+                const vol = off.createGain(); vol.gain.value = t.muted ? 0 : t.volume;
+                src.connect(vol);
+                const chain = buildEffectChain(off, t.activeDistortions); // chain yang sama persis dengan player
+                vol.connect(chain.input); chain.output.connect(master);
+                src.start(0);
+            });
+            return await new Promise((resolve, reject) => {
+                off.oncomplete = (e) => resolve(e.renderedBuffer); // Safari lama: tanpa promise
+                const p = off.startRendering();
+                if (p && p.then) p.then(resolve, reject);
+            });
+        }
+
+        async function encodeMp3(buffer, kbps, onProgress) {
+            if (!window.lamejs) throw new Error("Encoder MP3 (lamejs) belum termuat. Cek internet lalu muat ulang halaman.");
+            const sr = buffer.sampleRate, len = buffer.length;
+            const L = buffer.getChannelData(0), R = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : L;
+            let peak = 0;
+            for (let i = 0; i < len; i++) { const a = Math.abs(L[i]), b = Math.abs(R[i]); if (a > peak) peak = a; if (b > peak) peak = b; }
+            const gain = peak > 1 ? 0.98 / peak : 1; // hindari clipping digital saat vocal+music dijumlah
+            const enc = new window.lamejs.Mp3Encoder(2, sr, kbps);
+            const block = 1152 * 20, chunks = [];
+            for (let i = 0, n = 0; i < len; i += block, n++) {
+                const m = Math.min(block, len - i);
+                const l = new Int16Array(m), r = new Int16Array(m);
+                for (let j = 0; j < m; j++) {
+                    const a = Math.max(-1, Math.min(1, L[i + j] * gain)), b = Math.max(-1, Math.min(1, R[i + j] * gain));
+                    l[j] = a < 0 ? a * 0x8000 : a * 0x7FFF; r[j] = b < 0 ? b * 0x8000 : b * 0x7FFF;
+                }
+                const out = enc.encodeBuffer(l, r);
+                if (out.length) chunks.push(new Uint8Array(out));
+                if (n % 10 === 0) { onProgress(Math.round(i / len * 100)); await new Promise(res => setTimeout(res, 0)); }
+            }
+            const end = enc.flush();
+            if (end.length) chunks.push(new Uint8Array(end));
+            return new Blob(chunks, { type: 'audio/mpeg' });
+        }
+
+        // Unggah MP3 ke penyimpanan sementara Kie -> URL publik untuk Suno (dicoba berurutan sampai berhasil)
+        async function kieUploadAudio(blob, fileName, key, signal) {
+            const log = [];
+            let dataUrl = null;
+            for (const ep of KIE_UPLOAD_ENDPOINTS) {
+                try {
+                    let init;
+                    if (ep.kind === 'stream') {
+                        const fd = new FormData();
+                        fd.append('file', blob, fileName); fd.append('uploadPath', 'audio/cover-studio'); fd.append('fileName', fileName);
+                        init = { method: 'POST', headers: { 'Authorization': `Bearer ${key}` }, body: fd, signal };
+                    } else {
+                        if (!dataUrl) dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('Gagal membaca file')); fr.readAsDataURL(blob); });
+                        init = { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }, body: JSON.stringify({ base64Data: dataUrl, uploadPath: 'audio/cover-studio', fileName }), signal };
+                    }
+                    const res = await fetch(ep.url, init);
+                    const j = await res.json().catch(() => ({}));
+                    const url = j.data && (j.data.downloadUrl || j.data.fileUrl);
+                    if (res.ok && url) return url;
+                    if (res.status === 401 || res.status === 402 || Number(j.code) === 401 || Number(j.code) === 402) throw Object.assign(new Error(j.msg || 'API key ditolak / kredit habis'), { fatal: true });
+                    log.push(`${ep.kind} ${ep.url}: ${j.msg || j.message || 'HTTP ' + res.status}`);
+                } catch (e) {
+                    if (e.name === 'AbortError' || e.fatal) throw e;
+                    log.push(`${ep.kind} ${ep.url}: ${e.message}`);
+                }
+            }
+            throw Object.assign(new Error("Gagal mengunggah audio DSP ke Kie AI"), { detail: log.join('\n') });
+        }
+
+        // Deteksi format audio dari byte awal file (bukan dari nama / header server yang bisa menyesatkan)
+        const AUDIO_EXT = { mp3: 'mp3', wav: 'wav', m4a: 'm4a', ogg: 'ogg', flac: 'flac', aac: 'aac' };
+        const AUDIO_MIME = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', flac: 'audio/flac', aac: 'audio/aac' };
+        function sniffAudio(u) {
+            const t = (a, b) => String.fromCharCode(...Array.from(u.slice(a, b)));
+            if (t(0, 3) === 'ID3') return 'mp3';
+            if (u[0] === 0xFF && (u[1] & 0xE0) === 0xE0) return (u[1] & 0x06) === 0 ? 'aac' : 'mp3'; // layer 00 = ADTS AAC
+            if (t(0, 4) === 'RIFF' && t(8, 12) === 'WAVE') return 'wav';
+            if (t(0, 4) === 'OggS') return 'ogg';
+            if (t(0, 4) === 'fLaC') return 'flac';
+            if (t(4, 8) === 'ftyp') return 'm4a';
+            return 'unknown';
+        }
+
+        const formatTime = (secs) => {
+            const m = Math.floor(secs / 60); const s = Math.floor(secs % 60);
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        };
+
+        const showToast = (msg, type = 'info') => {
+            const container = document.getElementById('toast-container');
+            if(!container) return;
+            const toast = document.createElement('div');
+            let colors = type === 'error' ? 'bg-red-900/90 text-red-100 border-red-700' : 
+                         type === 'success' ? 'bg-dsp-music/90 text-white border-dsp-music' : 
+                         'bg-dsp-panel text-white border-dsp-border';
+            toast.className = `px-4 py-3 rounded-lg shadow-xl text-sm flex items-center gap-3 animate-slide-up border backdrop-blur-md ${colors}`;
+            const icon = document.createElement('i');
+            icon.className = `fa-solid fa-${type==='error'?'circle-exclamation':type==='success'?'check-circle':'info-circle'}`;
+            const span = document.createElement('span');
+            span.textContent = msg;
+            toast.appendChild(icon); toast.appendChild(span);
+            container.appendChild(toast);
+            setTimeout(() => { toast.classList.add('opacity-0', 'transition-opacity'); setTimeout(() => toast.remove(), 300); }, type === 'error' ? 5000 : 3000);
+        };
+
+        function App() {
+            // States
+            const [step, setStep] = useState(1); // 1: Upload, 2: DSP, (3: Cek Suno disembunyikan, otomatis dilewati), 4: Edit (lirik & style), 5: Generate
+            const [audioFile, setAudioFile] = useState(null);
+            
+            // API Keys state
+            const [apiKeys, setApiKeys] = useState(() => {
+                try {
+                    const stored = JSON.parse(localStorage.getItem('kie_app_keys') || 'null');
+                    if (stored) return { kie: stored.kie || '', callback: stored.callback || '' };
+                } catch(e){}
+                return { kie: '', callback: '' };
+            });
+            const [showSettings, setShowSettings] = useState(false);
+
+            // Data states
+            const [lyricsText, setLyricsText] = useState('');          // isi panel yang bisa diedit
+            const [lyricsHistory, setLyricsHistory] = useState([]);    // riwayat untuk Urungkan
+            const [audioDuration, setAudioDuration] = useState(0);   // durasi audio DSP (juga dipakai entri Library)
+            const [libId, setLibId] = useState('');                  // id entri Library yang baru disimpan / sedang dipakai
+            const [libMode, setLibMode] = useState(false);           // true = audio dari Library (langkah DSP & Cek Suno dilewati)
+            const [showKey, setShowKey] = useState(false);           // tampilkan/sembunyikan API key
+            const dspBlobRef = useRef(null);                         // MP3 hasil render DSP (diunggah ke Kie & disimpan di Library)
+            const lyricsRef = useRef(null);
+            const fmtCache = useRef({ src: '', out: '' });       // hasil format lirik terakhir: lirik sama = tidak panggil AI lagi
+            const [optimizing, setOptimizing] = useState(false); // optimasi style berjalan inline, tanpa overlay
+            const [prevStyle, setPrevStyle] = useState(null);
+            const [lastAction, setLastAction] = useState('');
+            
+            // Processing states
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [processMsg, setProcessMsg] = useState('');
+            const [elapsed, setElapsed] = useState(0);
+            const [streamPreview, setStreamPreview] = useState('');
+            const [errorDetail, setErrorDetail] = useState('');
+            const [coverResults, setCoverResults] = useState([]);
+            const [sunoErr, setSunoErr] = useState(null);
+            const [stage, setStage] = useState(0);
+            const [uploadedUrl, setUploadedUrl] = useState('');
+            const [style, setStyle] = useState('Acoustic pop, clear vocals');
+            const [vocal, setVocal] = useState({ genders: [], age: '', range: '', traits: [] });
+            const vocalTags = vocalTagList(vocal);
+            const audioSig = () => audioFile ? hash36(AudioEngine.fileKey(audioFile) + '|' + JSON.stringify(tracksState)) : '';
+            const genSig = (styleRaw) => hash36([libId || audioSig(), lyricsText.trim(), composeStyle(styleRaw, vocalTags), apiGender, KIE_SUNO_MODEL].join('\u0001'));
+            const apiGender = vocal.genders.length === 1 ? vocal.genders[0] : ''; // parameter vokal Kie hanya m/f; duet lewat tag style
+            const toggleGender = (id) => setVocal(v => {
+                const g = v.genders.includes(id) ? v.genders.filter(x => x !== id) : [...v.genders, id];
+                return g.length ? { ...v, genders: g, range: '', traits: v.traits.filter(t => !(t === 'falsetto' && g.length === 1 && g[0] === 'f')) } : { genders: [], age: '', range: '', traits: [] };
+            });
+            const pickAge = (id) => setVocal(v => { const age = v.age === id ? '' : id; const young = ['child', 'teen'].includes(age); return { ...v, age, range: age === 'child' ? '' : v.range, traits: v.traits.filter(t => !(young && V_YOUNG_BLOCK.includes(t))) }; });
+            const pickRange = (r) => setVocal(v => ({ ...v, range: v.range === r ? '' : r }));
+            const toggleTrait = (id) => setVocal(v => v.traits.includes(id) ? { ...v, traits: v.traits.filter(t => t !== id) } : (traitBlocked(id, v) ? v : { ...v, traits: [...v.traits, id] }));
+            const [view, setView] = useState('flow');
+            const [libTab, setLibTab] = useState('uploads');
+            const [libFilter, setLibFilter] = useState('all');       // filter hasil Suno: all | cover | song | instrumental
+            const [appMode, setAppMode] = useState('home');          // home | cover | song (Buat Lagu Baru)
+            const goHome = () => { engine.stop(); setIsPlaying(false); setAppMode('home'); };
+            const [lib, setLib] = useState(loadLib);
+            useEffect(() => { try { localStorage.setItem(LIB_KEY, JSON.stringify(lib)); } catch (e) {} }, [lib]);
+            const abortRef = useRef(null);
+            const cancelledRef = useRef(false);
+
+            // DSP States
+            const [currentTime, setCurrentTime] = useState(0);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [tracksState, setTracksState] = useState({
+                vocal: { muted: false, volume: 1, activeLevel: null },
+                music: { muted: false, volume: 1, activeLevel: null }
+            });
+
+            // Simpan API key ke localStorage (aman jika storage diblokir)
+            useEffect(() => {
+                try { localStorage.setItem('kie_app_keys', JSON.stringify(apiKeys)); } catch(e) {}
+            }, [apiKeys]);
+
+            // ---- Status koneksi API & kredit ----
+            const [apiStatus, setApiStatus] = useState({
+                kie: { state: 'idle', msg: '', credits: null }
+            });
+            const setStatus = (k, v) => setApiStatus(prev => ({ ...prev, [k]: { ...prev[k], ...v } }));
+            const fmtNum = (n) => Number(n).toLocaleString('id-ID');
+
+            const checkKie = async () => {
+                const key = cleanKey(apiKeys.kie);
+                if (!key) return setStatus('kie', { state: 'idle', msg: '', credits: null });
+                setStatus('kie', { state: 'checking', msg: 'Memeriksa...' });
+                try {
+                    const res = await fetchWithTimeout('https://api.kie.ai/api/v1/chat/credit', { cache: 'no-store', headers: { 'Authorization': `Bearer ${key}`, 'Accept': 'application/json' } });
+                    const data = await res.json().catch(() => ({}));
+                    const code = Number(data.code != null ? data.code : res.status);
+                    const credits = Number(data.data);
+                    if (code === 401 || res.status === 401) setStatus('kie', { state: 'error', msg: 'API key tidak valid', credits: null });
+                    else if (code === 402) setStatus('kie', { state: 'empty', msg: 'Kredit habis', credits: 0 });
+                    else if (res.ok && code === 200 && isFinite(credits)) {
+                        if (credits <= 0) setStatus('kie', { state: 'empty', msg: 'Kredit habis', credits });
+                        else setStatus('kie', { state: 'ok', msg: 'Terhubung', credits });
+                    }
+                    else setStatus('kie', { state: 'error', msg: `Error ${code}: ${data.msg || 'server Kie bermasalah, coba cek ulang'}`, credits: null });
+                } catch (e) {
+                    setStatus('kie', { state: 'error', msg: e.name === 'AbortError' ? 'Timeout (15 dtk)' : 'Tidak bisa terhubung (cek internet)', credits: null });
+                }
+            };
+
+            // Saldo Kie baru terpotong beberapa saat setelah tugas berjalan: cek ulang berkala
+            const checkKieLater = () => { checkKie(); [4000, 15000, 45000, 90000].forEach(ms => setTimeout(checkKie, ms)); };
+            const refreshAll = () => { checkKie(); };
+
+            // Cek otomatis saat key berubah (ditunda 800ms agar tidak menembak tiap ketikan) & saat aplikasi dibuka
+            useEffect(() => {
+                const id = setTimeout(checkKie, 800);
+                return () => clearTimeout(id);
+            }, [apiKeys.kie]);
+
+            const statusView = (id) => {
+                const st = apiStatus[id];
+                const dot = st.state === 'ok' ? 'bg-emerald-500' : st.state === 'checking' ? 'bg-amber-400 animate-pulse' : st.state === 'empty' ? 'bg-amber-500' : st.state === 'error' ? 'bg-red-500' : 'bg-slate-500';
+                const textColor = st.state === 'ok' ? 'text-emerald-400' : st.state === 'error' ? 'text-red-400' : st.state === 'empty' ? 'text-amber-400' : 'text-dsp-muted';
+                let short = st.msg || 'Belum diisi';
+                let long = st.msg || 'Belum diisi';
+                if (id === 'kie' && st.state === 'ok' && st.credits != null) {
+                    short = `${fmtNum(st.credits)} kredit`;
+                    long = `Terhubung · sisa ${fmtNum(st.credits)} kredit`;
+                }
+                return { dot, textColor, short, long };
+            };
+            const anyChecking = apiStatus.kie.state === 'checking';
+
+            // Timer detik berjalan saat memproses, supaya jelas aplikasi masih bekerja
+            useEffect(() => {
+                if (!isProcessing) { setElapsed(0); return; }
+                const t0 = Date.now();
+                const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+                return () => clearInterval(id);
+            }, [isProcessing]);
+
+            const cancelProcessing = () => {
+                if (abortRef.current) { cancelledRef.current = true; abortRef.current.abort(); }
+            };
+
+            // Audio loop: sinkronkan waktu & status play dengan engine
+            // (dulu isPlaying tidak kembali false saat lagu selesai & waktu tidak update setelah seek saat pause)
+            useEffect(() => {
+                let req;
+                const update = () => {
+                    const t = engine.getCurrentTime();
+                    const playing = engine.isPlaying;
+                    setCurrentTime(prev => prev === t ? prev : t);
+                    setIsPlaying(prev => prev === playing ? prev : playing);
+                    req = requestAnimationFrame(update);
+                };
+                req = requestAnimationFrame(update);
+                return () => cancelAnimationFrame(req);
+            }, []);
+
+            const handleFileSelect = (e) => {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+                e.target.value = ''; // agar file yang sama bisa dipilih ulang
+                engine.stop();
+                setIsPlaying(false); setCurrentTime(0);
+                setCoverResults([]); setSunoErr(null); setUploadedUrl(''); setErrorDetail('');
+                setLibMode(false); setLibId(''); dspBlobRef.current = null;
+                // File baru: kosongkan lirik lama; lirik diisi manual di langkah Edit
+                if (!audioFile || AudioEngine.fileKey(f) !== AudioEngine.fileKey(audioFile)) {
+                    setLyricsText(''); setLyricsHistory([]); setLastAction('');
+                }
+                setAudioFile(f);
+                goToDsp(f); // langsung ke DSP
+            };
+
+            // Muat audio untuk DSP dan TUNGGU sampai selesai (dulu tidak di-await -> tombol play diam saja)
+            const prepareDSP = async (fileArg) => {
+                const af = fileArg instanceof File ? fileArg : audioFile;
+                if (!af) { showToast("File audio belum ada!", "error"); return false; }
+                setIsProcessing(true);
+                setProcessMsg('Memuat DSP...');
+                try {
+                    await engine.loadAudio(af, (pct, txt) => setProcessMsg(`Memuat DSP: ${txt} (${pct}%)`));
+                    if (engine.isMono) showToast("File mono: stem Music akan kosong (simulasi L/R)", "info");
+                    return true;
+                } catch (err) {
+                    console.error(err);
+                    showToast("Gagal memuat audio: " + (err.message || "format tidak didukung"), "error");
+                    return false;
+                } finally {
+                    setIsProcessing(false);
+                }
+            };
+
+            const goToDsp = async (f) => { if (await prepareDSP(f)) { setUploadedUrl(''); setSunoErr(null); dspBlobRef.current = null; setLibMode(false); setLibId(''); setStep(2); } };
+
+            const leaveDsp = (n) => {
+                engine.stop(); setIsPlaying(false);
+                setStep(n);
+            };
+
+            const goStep = (n) => {
+                if (n === 2) return goToDsp();
+                engine.stop(); setIsPlaying(false);
+                setStep(n);
+            };
+
+            // Panggil Kie (GPT-6 Luna) dengan beberapa percobaan; kembalikan teks mentah balasan
+            const callKie = async (prompt, opts = {}) => {
+                const kieKey = cleanKey(apiKeys.kie);
+                let rawContent = '', lastErr = null;
+                const attemptLog = [];
+                if (!opts.silent) setStreamPreview('');
+                for (let i = 0; i < KIE_ATTEMPTS.length; i++) {
+                    const { model, effort } = KIE_ATTEMPTS[i];
+                    const ctrl = new AbortController();
+                    if (!opts.silent) { abortRef.current = ctrl; cancelledRef.current = false; }
+                    let timedOut = false;
+                    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, opts.timeout || KIE_TIMEOUT_MS);
+                    try {
+                        if (!opts.silent) setProcessMsg(`Menghubungi AI (${model}) - percobaan ${i + 1}/${KIE_ATTEMPTS.length}...`);
+                        const res = await fetch(KIE_URL, {
+                            method: 'POST',
+                            signal: ctrl.signal,
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${kieKey}` },
+                            body: JSON.stringify({ model, stream: false, reasoning: { effort }, input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }] })
+                        });
+                        const txt = await res.text();
+                        let data = {}; try { data = JSON.parse(txt); } catch (e) {}
+                        // Kie bisa membalas HTTP 200 tapi isinya {code, msg} (error)
+                        if (!res.ok || (data.code && Number(data.code) !== 200) || data.error) {
+                            const err = new Error((data.error && data.error.message) || data.msg || data.message || txt.slice(0, 200) || `HTTP ${res.status}`);
+                            err.status = res.ok ? Number(data.code) || 0 : res.status;
+                            throw err;
+                        }
+                        rawContent = extractText(data);
+                        if (!rawContent) throw new Error("Respons kosong dari AI");
+                        lastErr = null;
+                        break;
+                    } catch (e) {
+                        if (!opts.silent && cancelledRef.current) throw new Error("Dibatalkan");
+                        const isTimeout = e.name === 'AbortError' || timedOut;
+                        attemptLog.push(`#${i + 1} ${model} (${effort}): ${isTimeout ? 'timeout' : e.message}${e.status ? ` [${e.status}]` : ''}`);
+                        lastErr = isTimeout ? new Error("Kie AI tidak merespons (timeout). Coba lagi beberapa saat lagi.") : e;
+                        if ([401, 402, 403].includes(e.status)) break; // key/kredit bermasalah: percobaan ulang tidak membantu
+                    } finally {
+                        clearTimeout(timer);
+                    }
+                }
+                if (!opts.silent) abortRef.current = null;
+                if (lastErr) {
+                    setErrorDetail(attemptLog.join('\n'));
+                    throw lastErr;
+                }
+                return rawContent;
+            };
+
+            const optimizeStyle = async () => {
+                if (optimizing) return;
+                if (!cleanKey(apiKeys.kie)) return showToast("API Key Kie AI dibutuhkan!", "error");
+                const cur = style.trim();
+                if (!cur) return showToast("Isi style dulu.", "error");
+                setOptimizing(true); setErrorDetail('');
+                try {
+                    // silent: tanpa overlay layar penuh; hasil langsung masuk ke kotak style
+                    const raw = await callKie(buildStylePrompt(cur, { tags: vocalTags, lyrics: lyricsText }), { silent: true, timeout: 60000 });
+                    const out = parseStyleResponse(raw);
+                    if (!out) throw new Error("Hasil kosong, coba ulang");
+                    setPrevStyle(cur); setStyle(out.slice(0, STYLE_MAX));
+                } catch (err) {
+                    console.error(err);
+                    showToast(err.message || "Gagal mengoptimalkan style", "error");
+                } finally {
+                    setOptimizing(false);
+                    setTimeout(checkKie, 3000); // satu kali cek saldo (dulu 5 kali)
+                }
+            };
+
+            const styleBox = (
+                <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-semibold flex items-center gap-2"><i className="fa-solid fa-palette text-dsp-music"></i> Style Lagu</h3>
+                        <span className="text-[10px] font-mono text-dsp-muted">{style.length}/1000</span>
+                    </div>
+                    <p className="text-xs text-dsp-muted leading-relaxed">Tulis lagu ini mau dibuat seperti apa (genre, suasana, instrumen, vokal). Bahasa Indonesia boleh, lalu tekan Optimalkan.</p>
+                    <textarea value={style} onChange={e => setStyle(e.target.value)} readOnly={optimizing} rows={3} maxLength={1000} placeholder="mis. lagu anak ceria, akustik, vokal wanita, tempo sedang" className="w-full bg-dsp-bg border border-dsp-border rounded-lg p-3 text-sm text-dsp-text focus:border-dsp-music outline-none resize-y" />
+                    <div className="flex items-center gap-3">
+                        <button onClick={optimizeStyle} disabled={!style.trim() || optimizing} className="flex-1 bg-dsp-ai text-white py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-40">{optimizing ? <><i className="fa-solid fa-circle-notch fa-spin mr-2"></i>Mengoptimalkan...</> : <><i className="fa-solid fa-wand-magic-sparkles mr-2"></i>Optimalkan Style</>}</button>
+                        {prevStyle !== null && <button onClick={() => { setStyle(prevStyle); setPrevStyle(null); }} className="text-[11px] font-mono text-dsp-accent">Urungkan</button>}
+                    </div>
+                    <div className="border-t border-dsp-border/60 pt-3 flex flex-col gap-3">
+                        <div className="text-[11px] font-mono text-dsp-muted">VOKAL (otomatis masuk ke depan style, tanpa AI)</div>
+                        <div>
+                            <div className="text-[11px] text-dsp-muted mb-1.5">Jenis suara. Pilih keduanya untuk duet.</div>
+                            <div className="flex gap-2">{[{ id: 'f', l: 'Wanita' }, { id: 'm', l: 'Pria' }].map(o => <Chip key={o.id} on={vocal.genders.includes(o.id)} onClick={() => toggleGender(o.id)}>{o.l}</Chip>)}</div>
+                        </div>
+                        {vocal.genders.length > 0 && (<>
+                            <div>
+                                <div className="text-[11px] text-dsp-muted mb-1.5">Usia suara</div>
+                                <div className="flex flex-wrap gap-2">{VOCAL_AGES.map(a => <Chip key={a.id} on={vocal.age === a.id} onClick={() => pickAge(a.id)}>{a.l}</Chip>)}</div>
+                            </div>
+                            {vocal.genders.length === 1 && vocal.age !== 'child' && (
+                                <div>
+                                    <div className="text-[11px] text-dsp-muted mb-1.5">Rentang suara</div>
+                                    <div className="flex flex-wrap gap-2">{VOCAL_RANGES[vocal.genders[0]].map(r => <Chip key={r} on={vocal.range === r} onClick={() => pickRange(r)}>{r}</Chip>)}</div>
+                                </div>
+                            )}
+                            <div>
+                                <div className="text-[11px] text-dsp-muted mb-1.5">Karakter suara (maks 2; yang bertentangan dikunci)</div>
+                                <div className="flex flex-wrap gap-2">{VOCAL_TRAITS.map(t => <Chip key={t.id} on={vocal.traits.includes(t.id)} disabled={traitBlocked(t.id, vocal)} onClick={() => toggleTrait(t.id)}>{t.l}</Chip>)}</div>
+                            </div>
+                        </>)}
+                        <div className="rounded-lg bg-dsp-bg border border-dsp-border p-2.5 text-[11px] font-mono break-words select-text">
+                            <div className="text-dsp-muted mb-1">Style akhir yang dikirim ({composeStyle(style, vocalTags).length}/{STYLE_MAX})</div>
+                            {composeStyle(style, vocalTags) || '-'}
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const insertTag = (tag) => {
+                const el = lyricsRef.current; const pos = el ? el.selectionStart : lyricsText.length;
+                const before = lyricsText.slice(0, pos), after = lyricsText.slice(pos);
+                const ins = `${before && !before.endsWith('\n') ? '\n' : ''}${tag}\n`;
+                setLyricsHistory(h => [...h.slice(-19), lyricsText]);
+                setLyricsText(before + ins + after);
+                setTimeout(() => { if (el) { el.focus(); const c = (before + ins).length; el.setSelectionRange(c, c); } }, 0);
+            };
+
+            const undoLyrics = () => {
+                if (lyricsHistory.length === 0) return;
+                setLyricsText(lyricsHistory[lyricsHistory.length - 1]);
+                setLyricsHistory(h => h.slice(0, -1));
+                setLastAction('Dikembalikan ke versi sebelumnya');
+            };
+
+            const generateKieCover = async (config, mode = 'final') => {
+                const kieKey = cleanKey(apiKeys.kie);
+                if (!kieKey) return showToast("API Key Kie AI dibutuhkan!", "error");
+                if (!audioFile) return showToast("File audio belum ada!", "error");
+                if (mode === 'final' && !lyricsText.trim()) return showToast("Isi lirik dulu sebelum Generate!", "error");
+                if (!uploadedUrl && !dspBlobRef.current && tracksState.vocal.muted && tracksState.music.muted) return showToast("Vocal & Music sama-sama di-mute, hasil DSP akan hening.", "error");
+                // Input sama persis (audio, lirik, style, vokal, model) dengan cover yang sudah ada: jangan boros kredit tanpa konfirmasi
+                const sig = mode === 'final' ? genSig(config.style) : '';
+                if (mode === 'final') {
+                    const dup = lib.covers.find(c => c.sig === sig);
+                    if (dup && !window.confirm('Audio, lirik, style, dan vokal ini sama persis dengan cover yang sudah ada di Library. Generate ulang tetap memakai kredit. Lanjutkan?')) { setLibTab('covers'); setView('library'); return; }
+                }
+                // Lirik ikut tersimpan ke entri Library saat Generate
+                if (mode === 'final' && libId) setLib(l => ({ ...l, uploads: l.uploads.map(x => x.id === libId ? { ...x, lyrics: lyricsText } : x) }));
+
+                const ctrl = new AbortController();
+                abortRef.current = ctrl; cancelledRef.current = false;
+                const chk = () => { if (cancelledRef.current) throw new Error("Dibatalkan"); };
+                const auth = { 'Authorization': `Bearer ${kieKey}` };
+                let taskId = '';
+                setIsProcessing(true); setErrorDetail(''); setStreamPreview(''); setCoverResults([]); setSunoErr(null); setStage(mode === 'final' ? 1 : (uploadedUrl ? 5 : (dspBlobRef.current ? 4 : 2)));
+                engine.stop(); setIsPlaying(false);
+
+                try {
+                    // 0. Format lirik (AI): hasil langsung dipakai untuk Suno, tidak ditampilkan
+                    let lyricsOut = '';
+                    if (mode === 'final') {
+                        const srcLy = lyricsText.trim();
+                        if (fmtCache.current.src === srcLy && fmtCache.current.out) lyricsOut = fmtCache.current.out; // lirik tidak berubah: pakai hasil format sebelumnya, tanpa panggilan AI
+                        else {
+                            setProcessMsg('AI memformat lirik untuk Suno (suku kata + label bagian)...');
+                            const rawLy = await callKie(buildFormatPrompt(srcLy));
+                            abortRef.current = ctrl; chk(); // callKie memakai controller sendiri; pulihkan agar tombol Batal tetap berfungsi
+                            lyricsOut = parseLyricsResponse(rawLy);
+                            if (lyricsOut) fmtCache.current = { src: srcLy, out: lyricsOut };
+                        }
+                        if (!lyricsOut) throw new Error('Hasil format lirik kosong, coba lagi.');
+                        if (lyricsOut.length > LYRICS_MAX) throw new Error(`Lirik setelah diformat ${lyricsOut.length} karakter, melebihi batas ${LYRICS_MAX} karakter. Persingkat lirik lalu coba lagi.`);
+                        setStage(uploadedUrl ? 5 : (dspBlobRef.current ? 4 : 2));
+                    }
+                    // 1. Siapkan MP3 hasil DSP: pakai yang sudah ada (render sebelumnya / dari Library) atau render baru
+                    let dur = audioDuration;
+                    let uploadUrl = uploadedUrl;
+                    if (!uploadUrl) {
+                        let mp3 = dspBlobRef.current;
+                        if (!mp3) {
+                            if (!engine.vocalBuffer || !engine.musicBuffer) {
+                                setProcessMsg('Memuat DSP...');
+                                await engine.loadAudio(audioFile, () => {});
+                            }
+                            if (engine.duration > 480) throw new Error("Durasi audio lebih dari 8 menit (batas Suno Upload & Cover).");
+                            setProcessMsg('Merender audio hasil DSP...');
+                            await new Promise(r => setTimeout(r, 60));
+                            const rendered = await renderDspBuffer(engine); chk();
+                            setStage(3); setProcessMsg('Mengompres audio DSP ke MP3 (0%)...');
+                            mp3 = await encodeMp3(rendered, 192, (p) => setProcessMsg(`Mengompres audio DSP ke MP3 (${p}%)...`)); chk();
+                            dspBlobRef.current = mp3; dur = engine.duration; setAudioDuration(dur);
+                        }
+
+                        // 2. Unggah ke Kie -> URL publik
+                        setStage(4); setProcessMsg(`Mengunggah audio DSP (${(mp3.size / 1048576).toFixed(1)} MB) ke Kie AI...`);
+                        uploadUrl = await kieUploadAudio(mp3, `dsp-${Date.now()}.mp3`, kieKey, ctrl.signal); chk();
+                        setUploadedUrl(uploadUrl);
+                    }
+
+                    // 3. Kirim tugas Upload & Cover ke Suno via Kie
+                    setStage(5); setProcessMsg(mode === 'check' ? 'Mengirim sampel 10 detik ke Suno untuk cek copyright...' : 'Mengirim tugas cover ke Suno (Kie AI)...');
+                    const base = (audioFile.name || 'Cover').replace(/\.[^.]+$/, '');
+                    const body = {
+                        uploadUrl, instrumental: false, model: KIE_SUNO_MODEL,
+                        callBackUrl: cleanKey(apiKeys.callback) || KIE_DEFAULT_CALLBACK,
+                        title: `${base} (Cover)`.slice(0, 80),
+                        ...(mode === 'check' ? { duration: 10 } : { lyrics: lyricsOut, ...(apiGender ? { vocalGender: apiGender } : {}) })
+                    };
+                    const style = composeStyle(config.style, vocalTags);
+                    if (style) body.style = style;
+                    const submit = async (b) => {
+                        const res = await fetch(KIE_SUNO_URL, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify(b) });
+                        return { res, j: await res.json().catch(() => ({})) };
+                    };
+                    let { res, j } = await submit(body);
+                    if (!(res.ok && Number(j.code) === 200 && j.data && j.data.taskId) && /customMode/i.test(j.msg || '')) ({ res, j } = await submit({ ...body, customMode: true }));
+                    if (!(res.ok && Number(j.code) === 200 && j.data && j.data.taskId)) {
+                        throw new Error(`Kie AI menolak tugas: ${j.msg || j.message || 'HTTP ' + res.status} (code ${j.code || res.status})`);
+                    }
+                    taskId = j.data.taskId;
+
+                    // 4. Polling sampai Suno selesai
+                    const t0 = Date.now(); let fails = 0, polls = 0, tracks = []; setStage(6);
+                    const FAILED = ['CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'SENSITIVE_WORD_ERROR'];
+                    while (true) {
+                        chk();
+                        if (Date.now() - t0 > 600000) throw new Error(`Suno terlalu lama (>10 menit). Task ID: ${taskId}`);
+                        await new Promise(r => setTimeout(r, 5000)); chk();
+                        let info;
+                        try {
+                            const r = await fetch(`${KIE_SUNO_INFO}?taskId=${encodeURIComponent(taskId)}`, { headers: auth, signal: ctrl.signal });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok || Number(d.code) !== 200) {
+                                if ([401, 402, 403].includes(r.status) || [401, 402, 403].includes(Number(d.code))) throw Object.assign(new Error(d.msg || 'Akses ditolak'), { fatal: true });
+                                throw new Error(d.msg || `HTTP ${r.status}`);
+                            }
+                            info = d.data || {}; fails = 0;
+                        } catch (e) {
+                            if (e.name === 'AbortError' || e.fatal || ++fails > 5) throw e;
+                            continue; // gangguan jaringan sesaat (HP): coba lagi
+                        }
+                        const status = info.status || '';
+                        const list = (info.response && (info.response.sunoData || info.response.data)) || [];
+                        const labels = { PENDING: 'Menunggu antrean Suno', TEXT_SUCCESS: 'Suno menyusun lirik', FIRST_SUCCESS: 'Track pertama selesai, menunggu sisanya' };
+                        setProcessMsg(`${labels[status] || 'Suno sedang membuat cover'}... (${status || 'PENDING'}) · cek ke-${++polls}${Date.now() - t0 > 150000 ? '\nAntrean Suno padat, ini normal. Tetap dipantau, boleh tekan Batal.' : ''}`);
+                        if (mode === 'check' && ['TEXT_SUCCESS', 'FIRST_SUCCESS', 'SUCCESS'].includes(status)) break;
+                        if (status === 'SUCCESS') { tracks = list; break; }
+                        if (status === 'CALLBACK_EXCEPTION' && list.some(x => x.audio_url || x.source_audio_url)) { tracks = list; break; }
+                        if (FAILED.includes(status) || status === 'CALLBACK_EXCEPTION') {
+                            throw Object.assign(new Error(`Suno gagal: ${info.errorMessage || status}`), { raw: `status: ${status}\n${info.errorMessage || ''}` });
+                        }
+                    }
+
+                    if (mode === 'check') {
+                        // Simpan file hasil DSP (bukan file asli) ke Library
+                        const blob = dspBlobRef.current;
+                        const id = 'u' + Date.now();
+                        let saved = false;
+                        try { if (blob) { await idbPut(id, blob); saved = true; } } catch (e) {}
+                        if (saved) {
+                            const name = audioFile.name;
+                            lib.uploads.filter(x => x.name === name).forEach(x => idbDel(x.id).catch(() => {}));
+                            setLib(l => ({ ...l, uploads: [{ id, name, size: blob.size, duration: dur || engine.duration, lyrics: lyricsText, sig: audioSig(), date: Date.now() }, ...l.uploads.filter(x => x.name !== name)] }));
+                            setLibId(id);
+                            showToast("Lolos cek Suno. File DSP tersimpan di Library. Lanjut isi lirik & style.", "success");
+                        } else {
+                            showToast("Lolos cek Suno, tapi file gagal disimpan ke Library (penyimpanan perangkat).", "info");
+                        }
+                        setStep(4);
+                        return;
+                    }
+                    // 5. Tampilkan hasil
+                    const results = tracks.map((x, i) => ({
+                        id: x.id || i, title: x.title || `Cover ${i + 1}`,
+                        url: x.audio_url || x.source_audio_url || x.stream_audio_url || '',
+                        image: x.image_url || x.source_image_url || '', duration: x.duration
+                    })).filter(x => x.url);
+                    if (!results.length) throw new Error(`Suno selesai tapi tidak ada audio. Task ID: ${taskId}`);
+                    setCoverResults(results);
+                    setLib(l => ({ ...l, covers: [...results.map(r => ({ ...r, id: 'c' + Date.now() + '-' + r.id, source: audioFile.name, style: config.style || '', sig, date: Date.now() })), ...l.covers] }));
+                    setLibTab('covers'); setView('library');
+                    showToast(`Cover selesai! ${results.length} versi dari Suno.`, "success");
+                } catch (e) {
+                    console.error(e);
+                    if (cancelledRef.current || e.name === 'AbortError') showToast("Dibatalkan", "info");
+                    else {
+                        const cr = /copyright|existing work|matches|sensitive|lyric|hak cipta/i.test(`${e.message} ${e.raw || ''}`);
+                        const chkMode = mode === 'check';
+                        setSunoErr(cr ? {
+                            kind: 'copyright', title: chkMode ? 'Lagu terdeteksi copyright' : 'Lirik/audio ditolak Suno (terindikasi copyright)',
+                            msg: chkMode ? 'Suno menolak audio ini karena cocok dengan karya yang sudah ada. Silakan ganti dengan lagu lain (rekaman milik sendiri / bebas hak cipta) lalu upload ulang.' : 'Suno menolak lirik atau audio karena terindikasi hak cipta. Ubah/parafrase lirik lalu coba lagi.',
+                            raw: e.raw || e.message, back: chkMode ? 1 : 4, backLabel: chkMode ? 'Ganti Lagu' : 'Edit Lirik'
+                        } : { kind: 'error', title: 'Proses gagal', msg: e.message || 'Gagal generate cover', raw: e.detail || (taskId ? `Task ID: ${taskId}` : '') });
+                        showToast(e.message || "Gagal generate cover", "error");
+                    }
+                } finally {
+                    abortRef.current = null;
+                    setStage(0);
+                    setIsProcessing(false);
+                    checkKieLater(); // kredit berubah setelah dipakai
+                }
+            };
+
+            const sunoErrPanel = sunoErr && (
+                <div className={`rounded-lg border p-3 text-xs ${sunoErr.kind === 'copyright' ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
+                    <div className="font-semibold mb-1"><i className="fa-solid fa-triangle-exclamation mr-1"></i>{sunoErr.title}</div>
+                    <div className="leading-relaxed">{sunoErr.msg}</div>
+                    {sunoErr.raw && <pre className="mt-2 font-mono text-[10px] opacity-80 whitespace-pre-wrap break-words select-text">Pesan Suno/Kie: {sunoErr.raw}</pre>}
+                    {sunoErr.back && <button onClick={() => { setSunoErr(null); setStep(sunoErr.back); }} className="mt-3 px-3 py-2 rounded-lg bg-white text-black font-semibold">{sunoErr.backLabel}</button>}
+                </div>
+            );
+
+            const useLibUpload = async (it) => {
+                let blob = null; try { blob = await idbGet(it.id); } catch (e) {}
+                if (!blob) return showToast("File audio tidak tersimpan di perangkat ini", "error");
+                engine.stop(); setIsPlaying(false); setCurrentTime(0);
+                const f = new File([blob], `${String(it.name || 'Lagu').replace(/\.[^.]+$/, '')}.mp3`, { type: blob.type || 'audio/mpeg' });
+                dspBlobRef.current = blob;           // sudah hasil DSP & lolos cek Suno: DSP dan Cek dilewati
+                setAudioFile(f); setAudioDuration(it.duration || 0);
+                setLyricsText(it.lyrics || ''); setLyricsHistory([]); setLastAction('');
+                setCoverResults([]); setSunoErr(null); setErrorDetail(''); setUploadedUrl('');
+                setLibMode(true); setLibId(it.id);
+                setView('flow'); setStep(4);          // langsung ke kolom lirik
+            };
+
+            // Unduh langsung ke perangkat (tanpa membuka halaman web Kie). Atribut download pada <a> diabaikan browser untuk
+            // alamat lintas-situs, jadi file diambil dulu sebagai blob lalu disimpan dengan nama lagunya.
+            const [dlBusy, setDlBusy] = useState('');
+            // Selalu disimpan bernama .mp3 dengan jenis file netral (octet-stream), supaya HP/browser tidak menimpa ekstensi jadi .mpga
+            const downloadResult = async (it) => {
+                if (dlBusy || !it.url) return;
+                setDlBusy(it.id);
+                const base = String(it.title || 'Lagu').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Lagu';
+                const saveRaw = (blob, ext) => {
+                    const obj = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = obj; a.download = `${base}.${ext}`; a.style.display = 'none';
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(obj), 60000);
+                    return `${base}.${ext}`;
+                };
+                const saveMp3 = (bytes) => saveRaw(new Blob([bytes], { type: 'application/octet-stream' }), 'mp3');
+                try {
+                    const res = await fetch(it.url);
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const ab = await res.arrayBuffer();
+                    if (!ab.byteLength) throw new Error('File kosong');
+                    const kind = sniffAudio(new Uint8Array(ab, 0, Math.min(16, ab.byteLength)));
+                    if (kind === 'mp3') {
+                        showToast('Mengunduh: ' + saveMp3(ab), 'success');
+                    } else {
+                        // Bukan MP3 (WAV/M4A/dll): ubah ke MP3 di perangkat.
+                        const label = kind === 'unknown' ? 'non-MP3' : kind.toUpperCase();
+                        let mp3 = null;
+                        try {
+                            showToast('File berformat ' + label + ', mengonversi ke MP3...', 'info');
+                            const AC = window.AudioContext || window.webkitAudioContext;
+                            const ctx = new AC();
+                            let abuf; try { abuf = await ctx.decodeAudioData(ab.slice(0)); } finally { try { ctx.close(); } catch (e) {} }
+                            if (![44100, 48000, 32000].includes(abuf.sampleRate)) throw new Error('sample rate ' + abuf.sampleRate + ' tidak didukung encoder');
+                            mp3 = await encodeMp3(abuf, 192, () => {});
+                        } catch (ce) { console.error(ce); }
+                        if (mp3) showToast('Mengunduh: ' + saveMp3(mp3) + ' (dikonversi dari ' + label + ')', 'success');
+                        else if (kind === 'unknown') throw new Error('isi file bukan audio yang dikenali');   // jangan simpan file palsu berekstensi .mp3
+                        else showToast('Tidak bisa dikonversi penuh, disimpan langsung sebagai MP3: ' + saveMp3(ab), 'info');
+                    }
+                } catch (e) {
+                    console.error(e);
+                    // Server menolak pengambilan langsung (CORS) / jaringan putus / file bukan audio:
+                    // Secara eksplisit memaksa browser membuka dan menyimpan sebagai file mp3.
+                    showToast('Unduh langsung diblokir server. Mengunduh lewat tab baru sebagai MP3...', 'info');
+                    const a = document.createElement('a');
+                    a.href = it.url;
+                    a.download = `${base}.mp3`;
+                    a.target = '_blank';
+                    a.rel = 'noopener';
+                    a.style.display = 'none';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                } finally {
+                    setDlBusy('');
+                }
+            };
+            
+            const delLib = (kind, it) => {
+                if (!window.confirm('Hapus dari library?')) return;
+                if (kind === 'uploads') idbDel(it.id).catch(() => {});
+                setLib(l => ({ ...l, [kind]: l[kind].filter(x => x.id !== it.id) }));
+            };
+
+            const togglePlay = () => {
+                if (engine.isPlaying) { engine.stop(); setIsPlaying(false); setCurrentTime(engine.getCurrentTime()); } 
+                else {
+                    const ok = engine.play(engine.getCurrentTime());
+                    setIsPlaying(!!ok);
+                    if (!ok) showToast("Audio belum siap, upload ulang lagunya lalu lanjut ke DSP.", "error");
+                }
+            };
+
+            const handleSeek = (e) => {
+                engine.seek(parseFloat(e.target.value));
+                setCurrentTime(engine.getCurrentTime());
+            };
+
+            const setVolume = (trackName, vol) => {
+                engine.setTrackVolume(trackName, vol, tracksState[trackName].muted);
+                setTracksState(prev => ({ ...prev, [trackName]: { ...prev[trackName], volume: vol } }));
+            };
+
+            const toggleMute = (trackName) => {
+                const newMute = !tracksState[trackName].muted;
+                engine.setTrackVolume(trackName, tracksState[trackName].volume, newMute);
+                setTracksState(prev => ({ ...prev, [trackName]: { ...prev[trackName], muted: newMute } }));
+            };
+
+            const setDistortion = (trackName, level) => {
+                const activeLvl = engine.setDistortionLevel(trackName, level);
+                setTracksState(prev => ({ ...prev, [trackName]: { ...prev[trackName], activeLevel: activeLvl } }));
+            };
+
+            return (
+                <div className="flex flex-col h-full bg-dsp-bg relative">
+                    {/* Header */}
+                    <div className="pt-6 pb-4 px-6 flex justify-between items-center border-b border-dsp-border bg-dsp-bg/95 z-20 shrink-0">
+                        <div className="flex items-center gap-3">
+                            {appMode !== 'home' && <button onClick={goHome} title="Kembali ke menu awal" className="w-10 h-10 rounded-lg border border-dsp-border flex items-center justify-center hover:bg-dsp-panel transition-colors text-dsp-muted hover:text-white"><i className="fa-solid fa-house"></i></button>}
+                            <div>
+                                <h1 className="text-xl font-bold tracking-wide text-white">Kie <span className="text-dsp-accent">Cover Studio</span></h1>
+                                <p className="text-[10px] text-dsp-muted uppercase tracking-widest font-mono mt-1">{appMode === 'song' ? 'Buat Lagu Baru' : appMode === 'cover' ? 'Cover Lagu' : 'AI Powered Remaker'}</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setView('library')} className="absolute z-30 top-6 right-[4.75rem] w-10 h-10 rounded-lg border border-dsp-border flex items-center justify-center hover:bg-dsp-panel transition-colors text-dsp-muted hover:text-white"><i className="fa-solid fa-compact-disc"></i></button>
+                        <button onClick={() => setShowSettings(true)} className="w-10 h-10 rounded-lg border border-dsp-border flex items-center justify-center hover:bg-dsp-panel transition-colors text-dsp-muted hover:text-white">
+                            <i className="fa-solid fa-gear"></i>
+                        </button>
+                    </div>
+
+                    {/* Status API & Kredit */}
+                    <div className="flex items-center gap-2 px-6 py-2 shrink-0 border-b border-dsp-border bg-dsp-bg overflow-x-auto hide-scroll">
+                        {[{ id: 'kie', label: 'Kie AI' }].map(it => {
+                            const v = statusView(it.id);
+                            return (
+                                <button key={it.id} onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-dsp-border bg-dsp-panel text-[11px] font-mono whitespace-nowrap hover:bg-dsp-panelHover transition-colors">
+                                    <span className={`w-2 h-2 rounded-full ${v.dot}`}></span>
+                                    <span className="text-dsp-text font-semibold">{it.label}</span>
+                                    <span className={v.textColor}>{v.short}</span>
+                                </button>
+                            );
+                        })}
+                        <button onClick={refreshAll} title="Cek ulang koneksi & kredit" className="ml-auto shrink-0 w-8 h-8 rounded-lg border border-dsp-border flex items-center justify-center text-dsp-muted hover:text-white hover:bg-dsp-panel transition-colors">
+                            <i className={`fa-solid fa-rotate-right text-xs ${anyChecking ? 'fa-spin' : ''}`}></i>
+                        </button>
+                    </div>
+
+                    {/* Stepper Header (hanya mode Cover) */}
+                    <div className={`${appMode === 'cover' ? 'flex' : 'hidden'} px-6 py-4 gap-2 shrink-0 bg-dsp-panel/50 border-b border-dsp-border overflow-x-auto hide-scroll`}>
+                        {[[1, 'Upload'], [2, 'DSP'], [4, 'Edit'], [5, 'Generate']].map(([num, lbl], i) => {
+                            const isActive = step === num;
+                            const isDone = step > num;
+                            const clickable = isDone && !(libMode && (num === 2 || num === 3)); // dari Library: DSP & Cek dilewati
+                            return (
+                                <div key={num} onClick={() => clickable ? goStep(num) : null} className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${isActive ? 'bg-dsp-accent text-white shadow-[0_0_10px_rgba(59,130,246,0.3)]' : isDone ? (clickable ? 'bg-dsp-border text-white cursor-pointer hover:bg-dsp-border/80' : 'bg-dsp-border text-white opacity-60') : 'text-dsp-muted'}`}>
+                                    {isDone ? <i className="fa-solid fa-check"></i> : <span>{i + 1}</span>}
+                                    {lbl}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Menu awal: pilih Cover Lagu atau Buat Lagu Baru */}
+                    {appMode === 'home' && (
+                        <div className="flex-1 overflow-y-auto min-h-0">
+                            <div className="p-6 flex flex-col gap-4 animate-fade-in">
+                                <p className="text-sm text-dsp-muted">Mau buat apa hari ini?</p>
+                                <button onClick={() => setAppMode('cover')} className="text-left bg-dsp-panel border border-dsp-border rounded-2xl p-5 flex items-start gap-4 hover:border-dsp-accent transition-colors">
+                                    <div className="w-12 h-12 shrink-0 rounded-full bg-dsp-accent/10 flex items-center justify-center text-dsp-accent text-xl"><i className="fa-solid fa-cloud-arrow-up"></i></div>
+                                    <div>
+                                        <div className="font-semibold text-base text-white">Cover Lagu</div>
+                                        <p className="text-xs text-dsp-muted leading-relaxed mt-1">Upload lagu, atur DSP, lalu buat cover dengan lirik dan style baru.</p>
+                                    </div>
+                                </button>
+                                <button onClick={() => setAppMode('song')} className="text-left bg-dsp-panel border border-dsp-border rounded-2xl p-5 flex items-start gap-4 hover:border-dsp-music transition-colors">
+                                    <div className="w-12 h-12 shrink-0 rounded-full bg-dsp-music/10 flex items-center justify-center text-dsp-music text-xl"><i className="fa-solid fa-music"></i></div>
+                                    <div>
+                                        <div className="font-semibold text-base text-white">Buat Lagu Baru</div>
+                                        <p className="text-xs text-dsp-muted leading-relaxed mt-1">Buat lagu dari nol lewat style dan lirik, dengan pilihan Vocal atau Instrumental. Tanpa upload.</p>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Buat Lagu Baru (state terpisah dari Cover; tetap terpasang agar isian tidak hilang saat pindah menu) */}
+                    <div className={appMode === 'song' ? 'flex-1 relative min-h-0' : 'hidden'}>
+                        <NewSong apiKeys={apiKeys} lib={lib} setLib={setLib} refreshCredits={checkKie} refreshCreditsLater={checkKieLater}
+                            onSongDone={(k) => { setLibTab('covers'); setLibFilter(k === 'instrumental' ? 'instrumental' : 'song'); setView('library'); }} />
+                    </div>
+
+                    {/* Main Content Area (mode Cover) */}
+                    <div className={appMode === 'cover' ? 'flex-1 overflow-y-auto relative min-h-0' : 'hidden'}>
+                        
+                        {isProcessing && (
+                            <div className="absolute inset-0 bg-dsp-bg/90 backdrop-blur-sm z-40 flex flex-col items-center justify-center animate-fade-in px-6 text-center">
+                                <i className="fa-solid fa-circle-notch fa-spin text-4xl text-dsp-accent mb-4"></i>
+                                <p className="font-mono text-sm text-dsp-text break-words max-w-full">{processMsg}</p>
+                                <p className="font-mono text-xs text-dsp-muted mt-2">Berjalan {elapsed} dtk</p>
+                                {stage > 0 && (<ol className="mt-4 text-left text-[11px] font-mono space-y-1">{SUNO_STAGES.map((l, i) => (<li key={i} className={i + 1 < stage ? 'text-dsp-music' : i + 1 === stage ? 'text-white' : 'text-dsp-muted/50'}><i className={`fa-solid ${i + 1 < stage ? 'fa-check' : i + 1 === stage ? 'fa-circle-notch fa-spin' : 'fa-circle'} w-4 mr-1`}></i>{l}</li>))}</ol>)}
+                                {streamPreview && (
+                                    <pre className="mt-4 w-full max-w-sm max-h-40 overflow-y-auto text-left text-[11px] leading-relaxed font-mono text-dsp-muted bg-dsp-panel border border-dsp-border rounded-lg p-3 whitespace-pre-wrap break-words">{streamPreview.replace(/\\n/g, '\n').slice(-500)}</pre>
+                                )}
+                                {!processMsg.startsWith('Memuat DSP') && (
+                                    <button onClick={cancelProcessing} className="mt-6 px-5 py-2.5 rounded-lg border border-dsp-border text-sm font-medium text-dsp-text hover:bg-dsp-panelHover transition-colors">Batal</button>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="p-6">
+                            {/* Step 1: Upload */}
+                            {step === 1 && (
+                                <div className="flex flex-col items-center justify-center py-10 animate-fade-in">
+                                    <label className="w-full aspect-video max-h-[300px] border-2 border-dashed border-dsp-border bg-dsp-panel rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-dsp-accent transition-colors">
+                                        <div className="w-16 h-16 rounded-full bg-dsp-accent/10 flex items-center justify-center mb-4 text-dsp-accent text-2xl">
+                                            <i className="fa-solid fa-cloud-arrow-up"></i>
+                                        </div>
+                                        <h2 className="text-base font-semibold mb-1 text-dsp-text">Pilih File Audio</h2>
+                                        <p className="text-xs text-dsp-muted text-center px-8 mb-4">MP3, WAV maks durasi disarankan 8 menit.</p>
+                                        {audioFile && <div className="px-4 py-2 bg-dsp-border rounded-lg text-xs font-mono text-dsp-accent"><i className="fa-solid fa-file-audio mr-2"></i>{audioFile.name}</div>}
+                                        <input type="file" className="hidden" accept="audio/*" onChange={handleFileSelect} />
+                                    </label>
+                                </div>
+                            )}
+
+                            {/* Step 4: Edit (lirik & style) */}
+                            {step === 4 && (
+                                <div className="flex flex-col gap-4 animate-fade-in">
+                                    {styleBox}
+                                    <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-4">
+                                        <div className="flex justify-between items-start gap-3">
+                                            <h3 className="font-semibold flex items-center gap-2"><i className="fa-solid fa-pen-nib text-dsp-ai"></i> Lirik & Parafrase</h3>
+                                            
+                                        </div>
+                                        <p className="text-xs text-dsp-muted leading-relaxed">Tempel atau ketik lirik di kolom bawah, boleh diedit bebas. Saat Generate, lirik otomatis diformat AI (suku kata dipisah, label bagian ditambah) dan langsung dikirim ke Suno tanpa ditampilkan lagi.</p>
+
+                                        {errorDetail && (
+                                            <div className="p-3 rounded-lg border border-red-700 bg-red-900/30 text-[11px] font-mono text-red-200">
+                                                <div className="flex justify-between items-center mb-1.5">
+                                                    <span className="font-semibold">Detail error terakhir</span>
+                                                    <button onClick={() => { try { navigator.clipboard.writeText(errorDetail); showToast('Detail error disalin', 'success'); } catch (e) {} }} className="underline">Salin</button>
+                                                </div>
+                                                <pre className="whitespace-pre-wrap break-words select-text">{errorDetail}</pre>
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-1.5 overflow-x-auto hide-scroll">{['[Intro]', '[Verse 1]', '[Pre-Chorus]', '[Chorus]', '[Verse 2]', '[Bridge]', '[Outro]'].map(t => (<button key={t} onClick={() => insertTag(t)} className="shrink-0 px-2.5 py-1.5 rounded-md border border-dsp-border text-[11px] font-mono text-dsp-muted hover:text-white">{t}</button>))}</div>
+                                        <textarea ref={lyricsRef}
+                                            value={lyricsText}
+                                            onChange={e => setLyricsText(e.target.value)}
+                                            spellCheck={false}
+                                            placeholder="Tempel atau ketik lirik di sini. Beri label seperti [Verse 1] dan [Chorus] agar hasil Suno lebih rapi."
+                                            className="w-full bg-dsp-bg rounded-lg border border-dsp-border p-4 text-sm leading-relaxed text-dsp-text focus:outline-none focus:border-dsp-ai font-mono whitespace-pre-wrap resize-y min-h-[280px]"
+                                        />
+                                        <div className="flex items-center justify-between gap-3 text-[11px] font-mono text-dsp-muted -mt-2">
+                                            <span className={estFormatted(lyricsText) > LYRICS_MAX ? 'text-amber-300' : ''}>{lyricsText.trim() ? lyricsText.trim().split(/\n/).length : 0} baris · {lyricsText.trim() ? lyricsText.trim().split(/\s+/).length : 0} kata · ±{estFormatted(lyricsText)}/{LYRICS_MAX} karakter setelah format</span>
+                                            <span className="flex gap-4">
+                                                <button onClick={undoLyrics} disabled={lyricsHistory.length === 0} className={lyricsHistory.length === 0 ? 'opacity-40' : 'text-dsp-accent hover:underline'}><i className="fa-solid fa-rotate-left mr-1"></i>Urungkan</button>
+                                                
+                                            </span>
+                                        </div>
+                                        {lastAction && <div className="text-[11px] font-mono text-dsp-music -mt-2"><i className="fa-solid fa-check mr-1"></i>{lastAction}</div>}
+
+                                        {!lyricsText.trim() && <div className="text-[11px] font-mono text-amber-300"><i className="fa-solid fa-circle-info mr-1"></i>Isi lirik dulu: tempel atau ketik di kolom di atas.</div>}
+                                        
+
+                                        <button onClick={() => setStep(5)} disabled={!lyricsText.trim()} className="w-full bg-dsp-accent text-white py-3.5 rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed">
+                                            Selesai, Cek Akhir <i className="fa-solid fa-arrow-right ml-1"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Step 2: DSP */}
+                            {step === 2 && (
+                                <div className="flex flex-col gap-4 animate-fade-in pb-20">
+                                    {/* Player Controls */}
+                                    <div className="glass-panel rounded-xl flex items-center justify-between px-6 py-4 sticky top-0 z-10">
+                                        <button onClick={() => { engine.seek(0); setCurrentTime(0); }} className="w-10 h-10 flex items-center justify-center text-dsp-text hover:text-dsp-accent transition-colors"><i className="fa-solid fa-backward-step"></i></button>
+                                        <button onClick={togglePlay} className="w-14 h-14 rounded-full bg-dsp-accent text-white shadow-[0_4px_14px_rgba(59,130,246,0.4)] flex items-center justify-center transform transition active:scale-95">
+                                            <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play ml-1'} text-xl`}></i>
+                                        </button>
+                                        <button onClick={() => leaveDsp(4)} className="w-10 h-10 flex items-center justify-center text-dsp-text hover:text-dsp-ai transition-colors"><i className="fa-solid fa-forward-step"></i></button>
+                                    </div>
+
+                                    {/* Visualizer */}
+                                    <div className="bg-dsp-panel border border-dsp-border rounded-xl p-3 shadow-lg relative overflow-hidden">
+                                        <div className="flex justify-between items-center mb-2 px-1">
+                                            <div className="text-[10px] font-mono text-dsp-muted uppercase tracking-wider">FR Analyzer</div>
+                                            <div className="flex gap-3 text-[10px] font-mono">
+                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-dsp-vocal"></span> Vocal</span>
+                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-dsp-music"></span> Music</span>
+                                            </div>
+                                        </div>
+                                        <div className="h-32 w-full bg-[#0d1017] rounded-lg border border-[#1a202c] relative viz-bg overflow-hidden">
+                                            <SpectrumVisualizer engine={engine} isPlaying={isPlaying} />
+                                        </div>
+                                        <div className="mt-3 relative h-6">
+                                            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between text-[10px] font-mono text-dsp-muted px-1 pointer-events-none">
+                                                <span>{formatTime(currentTime)}</span>
+                                                <span>{formatTime(engine.duration)}</span>
+                                            </div>
+                                            <input type="range" min="0" max="100" step="0.1" value={engine.duration ? (currentTime/engine.duration)*100 : 0} onChange={handleSeek} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                                            <div className="absolute left-0 right-0 top-full h-[2px] bg-dsp-border mt-1 rounded-full overflow-hidden">
+                                                <div className="h-full bg-dsp-accent rounded-full" style={{ width: `${engine.duration ? (currentTime/engine.duration)*100 : 0}%` }}></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <TrackCard title="Vocal Filter" type="vocal" state={tracksState.vocal} onVolume={(v) => setVolume('vocal', v)} onMute={() => toggleMute('vocal')} onDistortion={(l) => setDistortion('vocal', l)} />
+                                    <TrackCard title="Music Filter" type="music" state={tracksState.music} onVolume={(v) => setVolume('music', v)} onMute={() => toggleMute('music')} onDistortion={(l) => setDistortion('music', l)} />
+                                    
+                                    <button onClick={() => leaveDsp(4)} className="w-full mt-4 bg-dsp-panel hover:bg-dsp-panelHover border border-dsp-border text-white py-4 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                                        Lanjut ke Lirik & Style <i className="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Step 3 (Cek copyright Suno) disembunyikan: otomatis dilewati, DSP langsung ke Edit */}
+
+                            {/* Step 5: Cek akhir & Generate */}
+                            {step === 5 && (
+                                <div className="flex flex-col gap-4 animate-fade-in">
+                                    <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-4">
+                                        <h3 className="font-semibold text-lg"><i className="fa-solid fa-rocket text-dsp-music mr-2"></i>Cek Akhir & Generate</h3>
+                                        {sunoErrPanel}
+                                        <div>
+                                            <label className="text-xs text-dsp-muted mb-2 block font-mono">Style / Genre / Prompt</label>
+                                            <input type="text" value={style} onChange={e => setStyle(e.target.value)} placeholder="Acoustic pop, emotive..." className="w-full bg-dsp-bg border border-dsp-border rounded-lg p-3 text-sm text-dsp-text focus:border-dsp-music outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-dsp-muted mb-2 block font-mono">Style akhir yang dikirim ({composeStyle(style, vocalTags).length}/{STYLE_MAX})</label>
+                                            <div className="bg-dsp-bg border border-dsp-border rounded-lg p-3 text-[11px] font-mono text-dsp-text break-words select-text">{composeStyle(style, vocalTags) || '-'}</div>
+                                            {vocal.genders.length === 2 && <p className="mt-1.5 text-[10px] text-dsp-muted font-mono">Duet: parameter vokal Kie hanya m/f, jadi duet diatur lewat tag style.</p>}
+                                        </div>
+                                        <div className="p-4 bg-dsp-bg border border-dsp-border rounded-lg flex flex-col gap-2 text-xs">
+                                            <div className="flex justify-between"><span className="text-dsp-muted">Audio DSP</span><span className="font-mono text-dsp-music"><i className="fa-solid fa-check"></i> Siap, hasil DSP ({formatTime(audioDuration || engine.duration)})</span></div>
+                                            <div className="text-dsp-muted">Lirik ({lyricsText.split('\n').filter(x => x.trim()).length} baris)</div>
+                                            <pre className="max-h-32 overflow-y-auto text-[11px] font-mono text-dsp-text whitespace-pre-wrap break-words">{lyricsText.trim().slice(0, 600)}{lyricsText.length > 600 ? '...' : ''}</pre>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <button onClick={() => setStep(4)} className="px-4 py-3 rounded-lg border border-dsp-border text-sm font-medium hover:bg-dsp-panelHover">Edit Lirik</button>
+                                            <button onClick={() => generateKieCover({ style })} disabled={!lyricsText.trim()} className="flex-1 disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-dsp-music to-dsp-accent text-white py-3.5 rounded-xl font-bold shadow-[0_4px_20px_rgba(16,185,129,0.3)]"><i className="fa-solid fa-bolt mr-2"></i>Generate Cover</button>
+                                        </div>
+                                        {!lyricsText.trim() && <p className="text-center text-[11px] font-mono text-amber-300">Isi lirik dulu (tombol Edit Lirik) sebelum Generate.</p>}
+                                        <p className="text-center text-[10px] text-dsp-muted font-mono">Biasanya 1-3 menit; saat antrean padat bisa lebih lama. Hasil masuk ke Library Cover.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Library */}
+                    {view === 'library' && (
+                        <div className="absolute inset-0 z-40 bg-dsp-bg flex flex-col animate-fade-in">
+                            <div className="px-6 pt-6 pb-3 flex items-center justify-between border-b border-dsp-border shrink-0">
+                                <h2 className="text-lg font-bold"><i className="fa-solid fa-compact-disc text-dsp-accent mr-2"></i>Library</h2>
+                                <button onClick={() => setView('flow')} className="px-4 py-2 rounded-lg border border-dsp-border text-sm">Tutup</button>
+                            </div>
+                            <div className="flex p-1 mx-6 mt-4 bg-dsp-panel rounded-lg border border-dsp-border shrink-0">
+                                {[{ id: 'uploads', l: `Lagu Upload (${lib.uploads.length})` }, { id: 'covers', l: `Hasil Suno (${lib.covers.length})` }].map(t => (
+                                    <button key={t.id} onClick={() => setLibTab(t.id)} className={`flex-1 py-2 text-xs font-semibold rounded-md ${libTab === t.id ? 'bg-dsp-accent text-white' : 'text-dsp-muted'}`}>{t.l}</button>
+                                ))}
+                            </div>
+                            {libTab === 'covers' && (
+                                <div className="flex gap-2 px-6 pt-3 overflow-x-auto hide-scroll shrink-0">
+                                    {[{ id: 'all', l: 'Semua' }, { id: 'cover', l: 'Cover' }, { id: 'song', l: 'Generate Lagu' }, { id: 'instrumental', l: 'Instrumental' }].map(f => {
+                                        const n = f.id === 'all' ? lib.covers.length : lib.covers.filter(x => (x.kind || 'cover') === f.id).length;
+                                        return <button key={f.id} onClick={() => setLibFilter(f.id)} className={`shrink-0 px-3 py-1.5 rounded-full border text-xs font-semibold ${libFilter === f.id ? 'bg-dsp-music border-dsp-music text-white' : 'border-dsp-border text-dsp-muted hover:text-white'}`}>{f.l} ({n})</button>;
+                                    })}
+                                </div>
+                            )}
+                            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-3">
+                                {libTab === 'uploads' && lib.uploads.length === 0 && <p className="text-center text-xs text-dsp-muted font-mono mt-10">Belum ada lagu tersimpan.</p>}
+                                {libTab === 'covers' && lib.covers.filter(x => libFilter === 'all' || (x.kind || 'cover') === libFilter).length === 0 && <p className="text-center text-xs text-dsp-muted font-mono mt-10">{lib.covers.length === 0 ? 'Belum ada hasil yang digenerate.' : 'Tidak ada hasil untuk filter ini.'}</p>}
+                                {libTab === 'uploads' && lib.uploads.map(it => (
+                                    <div key={it.id} className="p-3 bg-dsp-panel border border-dsp-border rounded-lg flex items-center gap-3">
+                                        <div className="min-w-0 flex-1"><div className="text-sm font-semibold truncate">{it.name}</div><div className="text-[10px] font-mono text-dsp-muted">{new Date(it.date).toLocaleDateString('id-ID')} · {formatTime(it.duration || 0)} · file hasil DSP · {it.lyrics ? 'lirik tersimpan' : 'belum ada lirik'}</div></div>
+                                        <button onClick={() => useLibUpload(it)} className="px-3 py-2 rounded-lg bg-dsp-accent text-white text-xs font-semibold">Pakai</button>
+                                        <button onClick={() => delLib('uploads', it)} className="px-2 text-dsp-muted"><i className="fa-solid fa-trash"></i></button>
+                                    </div>
+                                ))}
+                                {libTab === 'covers' && lib.covers.filter(x => libFilter === 'all' || (x.kind || 'cover') === libFilter).map(it => (
+                                    <div key={it.id} className="p-3 bg-dsp-panel border border-dsp-border rounded-lg flex flex-col gap-2">
+                                        <div className="flex items-center gap-3">
+                                            {it.image && <img src={it.image} alt="" className="w-12 h-12 rounded-md object-cover shrink-0" />}
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-sm font-semibold truncate">{it.title}</div>
+                                                <div className="text-[10px] font-mono text-dsp-muted truncate"><span className={`inline-block px-1.5 py-0.5 rounded mr-1.5 ${(it.kind || 'cover') === 'cover' ? 'bg-dsp-accent/20 text-dsp-accent' : (it.kind === 'instrumental' ? 'bg-amber-500/20 text-amber-300' : 'bg-dsp-music/20 text-dsp-music')}`}>{SONG_KIND_LABEL[it.kind || 'cover']}</span>{new Date(it.date).toLocaleDateString('id-ID')}{(it.kind || 'cover') === 'cover' ? ` · dari ${it.source}` : (it.style ? ` · ${it.style}` : '')}</div>
+                                            </div>
+                                            <button onClick={() => downloadResult(it)} disabled={!!dlBusy} title="Unduh ke perangkat" className="px-3 py-2 rounded-lg bg-dsp-music text-white text-xs font-semibold disabled:opacity-60"><i className={`fa-solid ${dlBusy === it.id ? 'fa-circle-notch fa-spin' : 'fa-download'}`}></i></button>
+                                            <button onClick={() => delLib('covers', it)} className="px-2 text-dsp-muted"><i className="fa-solid fa-trash"></i></button>
+                                        </div>
+                                        <audio controls preload="none" src={it.url} className="w-full h-10"></audio>
+                                    </div>
+                                ))}
+                                {libTab === 'covers' && lib.covers.length > 0 && <p className="text-[10px] text-dsp-muted font-mono">File hasil di server Kie dihapus setelah 15 hari, unduh dulu.</p>}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Settings Modal */}
+                    {showSettings && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+                            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSettings(false)}></div>
+                            <div className="bg-dsp-panel border border-dsp-border rounded-2xl p-6 w-full max-w-sm relative z-10 shadow-2xl">
+                                <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><i className="fa-solid fa-key text-dsp-muted"></i> Konfigurasi API</h2>
+                                
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[10px] uppercase tracking-wider font-mono text-dsp-muted mb-1 block">Kie AI API Key (Suno, GPT-6 Luna)</label>
+                                        <div className="relative">
+                                            <input type={showKey ? 'text' : 'password'} autoComplete="new-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={apiKeys.kie} onChange={e => setApiKeys({...apiKeys, kie: e.target.value})} className="w-full bg-dsp-bg border border-dsp-border rounded-lg p-2.5 pr-11 text-sm font-mono text-white focus:border-dsp-music outline-none" placeholder="sk-..." />
+                                            <button type="button" onClick={() => setShowKey(v => !v)} aria-label={showKey ? 'Sembunyikan API key' : 'Tampilkan API key'} className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-dsp-muted hover:text-white"><i className={`fa-solid ${showKey ? 'fa-eye-slash' : 'fa-eye'}`}></i></button>
+                                        </div>
+                                        <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] font-mono">
+                                            <span className="flex items-center gap-1.5 min-w-0">
+                                                <span className={`w-2 h-2 rounded-full shrink-0 ${statusView('kie').dot}`}></span>
+                                                <span className={`truncate ${statusView('kie').textColor}`}>{statusView('kie').long}</span>
+                                            </span>
+                                            <button onClick={checkKie} className="shrink-0 text-dsp-accent hover:underline">Cek koneksi</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] uppercase tracking-wider font-mono text-dsp-muted mb-1 block">Callback URL Suno (opsional)</label>
+                                        <input type="text" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={apiKeys.callback || ''} onChange={e => setApiKeys({...apiKeys, callback: e.target.value})} className="w-full bg-dsp-bg border border-dsp-border rounded-lg p-2.5 text-sm font-mono text-white focus:border-dsp-music outline-none" placeholder="https://example.com/callback" />
+                                        <p className="mt-1.5 text-[10px] text-dsp-muted font-mono">Hasil diambil lewat polling; kolom ini hanya formalitas yang diwajibkan Kie.</p>
+                                    </div>
+                                </div>
+
+                                <button onClick={() => setShowSettings(false)} className="w-full mt-6 bg-white text-black font-semibold py-3 rounded-lg hover:bg-neutral-200 transition-colors text-sm">
+                                    Simpan & Tutup
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Toast Notification Container */}
+                    <div id="toast-container" className="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-[60] w-full max-w-sm px-4 pointer-events-none"></div>
+                </div>
+            );
+        }
+
+        // =====================================================================================
+        // BUAT LAGU BARU (Suno generate langsung, tanpa upload / cover).
+        // State, prompt, dan alur ini sepenuhnya terpisah dari mode Cover. Yang dipakai bersama hanya:
+        // API key, library, dan fungsi bantu murni (composeStyle, vocalTagList, parser balasan AI).
+        // =====================================================================================
+        const KIE_GEN_URL = 'https://api.kie.ai/api/v1/generate';
+        const SONG_DURATIONS = [0, 60, 90, 120, 180, 240, 300, 360]; // 0 = otomatis (model yang menentukan)
+        const SONG_TAGS = ['[Intro]', '[Verse 1]', '[Pre-Chorus]', '[Chorus]', '[Verse 2]', '[Bridge]', '[Outro]'];
+        const SONG_KIND_LABEL = { cover: 'Cover', song: 'Generate Lagu', instrumental: 'Generate Music Instrumental' };
+
+        // Tanya AI (GPT-6 Luna via Kie). Batas waktu per percobaan, maksimal 2 percobaan, bisa dibatalkan lewat signal.
+        async function kieAsk(prompt, key, signal, ms) {
+            const log = []; let last = null;
+            for (let i = 0; i < 2; i++) {
+                if (signal && signal.aborted) throw Object.assign(new Error('Dibatalkan'), { cancelled: true });
+                const ctrl = new AbortController();
+                const onAbort = () => ctrl.abort();
+                if (signal) signal.addEventListener('abort', onAbort);
+                let timedOut = false;
+                const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, ms);
+                try {
+                    const res = await fetch(KIE_URL, {
+                        method: 'POST', signal: ctrl.signal,
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${key}` },
+                        body: JSON.stringify({ model: 'gpt-6-luna', stream: false, reasoning: { effort: 'low' }, input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }] })
+                    });
+                    const txt = await res.text();
+                    let data = {}; try { data = JSON.parse(txt); } catch (e) {}
+                    if (!res.ok || (data.code && Number(data.code) !== 200) || data.error) {
+                        const er = new Error((data.error && data.error.message) || data.msg || data.message || txt.slice(0, 200) || `HTTP ${res.status}`);
+                        er.status = res.ok ? Number(data.code) || 0 : res.status;
+                        throw er;
+                    }
+                    const out = extractText(data);
+                    if (!out) throw new Error('Respons kosong dari AI');
+                    return out;
+                } catch (e) {
+                    if (signal && signal.aborted) throw Object.assign(new Error('Dibatalkan'), { cancelled: true });
+                    const isTimeout = e.name === 'AbortError' || timedOut;
+                    log.push(`#${i + 1}: ${isTimeout ? 'timeout' : e.message}${e.status ? ` [${e.status}]` : ''}`);
+                    last = isTimeout ? new Error('Kie AI tidak merespons (timeout). Coba lagi beberapa saat lagi.') : e;
+                    if ([401, 402, 403].includes(e.status)) break; // key/kredit bermasalah: ulang tidak membantu
+                } finally {
+                    clearTimeout(timer);
+                    if (signal) signal.removeEventListener('abort', onAbort);
+                }
+            }
+            throw Object.assign(last || new Error('Gagal menghubungi AI'), { detail: log.join('\n') });
+        }
+
+        // Prompt style khusus lagu BARU (Suno membuat melodi & aransemen dari nol)
+        function buildSongStylePrompt(style, o) {
+            const tags = o.tags || [];
+            const vocalRule = o.instrumental
+                ? 'VOCAL: this is an INSTRUMENTAL track. Do NOT write any vocal descriptor (no gender, voice, vocals, singing, choir, humming, lyrics). Include the word "instrumental" exactly once.'
+                : tags.length
+                    ? `VOCAL: the app itself puts these vocal tags at the very start of the final style: "${tags.join(', ')}". Do NOT write any vocal descriptor in your output (no gender, age, range, vocal timbre, "vocals", "voice", duet, choir) and ignore vocal statements in the user description; the chosen vocal wins. Pick genre, mood, instruments and production that suit this voice.`
+                    : 'VOCAL: no vocal was chosen. Add exactly ONE clear vocal descriptor right after the genre (for example "warm female vocals") that fits the description and the lyric language.';
+            return [
+                'You are a Suno prompt specialist. Convert the user description into a Suno STYLE prompt for a brand-new song: Suno will invent the melody, arrangement and sound from scratch.',
+                '',
+                `USER DESCRIPTION: ${style}`,
+                `LYRIC SNIPPET (only to detect language and mood, never copy it): ${String(o.lyrics || '').replace(/\s+/g, ' ').slice(0, 400) || '(empty: follow the language of the description)'}`,
+                vocalRule,
+                '',
+                'HOW SUNO READS THE STYLE FIELD (follow strictly):',
+                '- Plain comma-separated descriptors, never sentences. No brackets, no section tags, no lyrics, no artist or song names.',
+                '- Order is weight: the earliest descriptors count most. Use this order: genre (+ era or subgenre), energy/tempo, mood, 2-3 key instruments, production texture.',
+                '- Total 4-8 descriptors (vocal tags not counted). Above that they start cancelling each other. One main genre, at most one secondary genre.',
+                '- Never combine contradictions (calm + aggressive, lo-fi + polished cinematic, whispered + anthemic). If the description contradicts itself, keep the part the user stressed most.',
+                '- Specific mood words beat vague ones: "warm, nostalgic, hopeful" instead of "sad" or "dark" alone.',
+                '- Include one tempo cue: the BPM number the user gave, otherwise one fitting number (for example "92 BPM") or an energy word.',
+                '- Name instruments precisely (acoustic guitar, upright piano, soft strings). Production: one short texture phrase (clean mix, soft reverb, live feel).',
+                '- Exclusions ("no X"): only if the user asked, maximum two.',
+                '- Keep the user intent. Fill empty slots with consistent choices. Never add elements that contradict the request.',
+                '',
+                `LENGTH: 120-350 characters, hard maximum ${Math.max(100, STYLE_MAX - tags.join(', ').length - 2)}. Write in English.`,
+                'OUTPUT: valid JSON {"style": "..."} only, no other text, no markdown.'
+            ].join('\n');
+        }
+
+        // Prompt "Lirik Otomatis": menulis lirik BARU dari nol sesuai style
+        function buildSongWritePrompt(style, o) {
+            const tags = o.tags || [];
+            return [
+                'You are an award-winning songwriter writing original lyrics that will be sung by Suno AI.',
+                '',
+                `SONG BRIEF (genre, mood, theme, and any language request): ${style}`,
+                tags.length ? `VOICE THAT WILL SING IT: ${tags.join(', ')}` : null,
+                'LANGUAGE: write in the language the brief asks for. If the brief names no language, write in Indonesian (Bahasa Indonesia).',
+                '',
+                'WRITE LIKE THIS:',
+                '- Let the genre and mood decide the feel: playful and simple for kids songs, intimate for acoustic ballads, punchy and rhythmic for pop or rock, and so on.',
+                '- One clear theme or tiny story. Concrete images (things you can see, hear, touch) instead of abstract statements. Avoid cliches and filler.',
+                '- A chorus with a memorable hook that repeats; verses that move the story forward; an optional bridge that shifts the angle.',
+                '- Natural rhymes (do not force them). Keep line lengths similar inside a section so the lines are easy to sing.',
+                '- Original words only: never quote or imitate an existing song.',
+                '',
+                'STRUCTURE: put each Suno section label alone on its own line in square brackets, for example [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Final Chorus], [Outro]. Choose a structure that fits the style (short songs for children: two verses plus chorus). Blank line between sections.',
+                'LENGTH: about 1200-2600 characters in total.',
+                '',
+                'OUTPUT: the lyrics only, as plain text. No title, no explanation, no markdown, no syllable hyphenation, no stage directions.'
+            ].filter(x => x !== null).join('\n');
+        }
+
+        // Prompt "Optimasi Lirik": memoles / menyempurnakan lirik yang sudah ada
+        function buildSongPolishPrompt(lyrics, style) {
+            return [
+                'You are a senior lyric editor polishing a song that will be sung by Suno AI.',
+                style ? `SONG BRIEF (use only for tone and genre): ${style}` : null,
+                '',
+                'TASK: polish the lyrics below to professional quality. You may rewrite weak lines freely, but keep the song recognisably the same song.',
+                'KEEP: the original language, theme, story, point of view, and section structure. Keep existing section labels; if labels are missing, add sensible Suno labels such as [Verse 1] and [Chorus] each on its own line.',
+                'IMPROVE:',
+                '- Replace cliches and vague lines with fresh, concrete imagery.',
+                '- Make line length and rhythm consistent inside each section so every line is easy to sing.',
+                '- Natural rhymes (never forced); fix awkward word order, grammar and spelling.',
+                '- Make the chorus hook stronger and more memorable; make every verse move the story forward.',
+                '- Cut filler and pointless repetition.',
+                'DO NOT: change the language, add syllable hyphens, add comments or explanations, or make the lyrics much longer (maximum 4500 characters).',
+                '',
+                'OUTPUT: only the polished lyrics, as plain text.',
+                '',
+                'LYRICS:',
+                lyrics
+            ].filter(x => x !== null).join('\n');
+        }
+
+        // Judul otomatis (Kie mewajibkan judul, maks 80 karakter)
+        function deriveSongTitle(kind, lyrics, style) {
+            const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+            if (kind === 'vocal') {
+                const line = String(lyrics || '').split('\n').map(l => l.replace(/\[[^\]]*\]/g, ' ').replace(/([A-Za-zÀ-ÿ])-(?=[A-Za-zÀ-ÿ])/g, '$1').replace(/[^\p{L}\p{N}\s'’]/gu, ' ').replace(/\s+/g, ' ').trim()).find(l => /[A-Za-zÀ-ɏ]/.test(l));
+                if (line) return cap(line.split(' ').slice(0, 6).join(' ')).slice(0, 80);
+                return 'Lagu Baru';
+            }
+            const first = String(style || '').split(',')[0].replace(/[^\p{L}\p{N}\s'’-]/gu, ' ').replace(/\s+/g, ' ').trim();
+            const words = first.split(' ').filter(Boolean).slice(0, 4).map(cap).join(' ');
+            return (words ? `${words} Instrumental` : 'Instrumental').slice(0, 80);
+        }
+
+        function NewSong({ apiKeys, lib, setLib, refreshCredits, refreshCreditsLater, onSongDone }) {
+            const [kind, setKind] = useState('vocal'); // 'vocal' | 'instrumental'
+            const [style, setStyle] = useState('');
+            const [prevStyle, setPrevStyle] = useState(null);
+            const [lyrics, setLyrics] = useState('');
+            const [lyricsHistory, setLyricsHistory] = useState([]);
+            const [vocal, setVocal] = useState({ genders: [], age: '', range: '', traits: [] });
+            const [duration, setDuration] = useState(0);
+            const [ai, setAi] = useState('');   // '', 'style', 'write', 'polish'
+            const [gen, setGen] = useState(false);
+            const [msg, setMsg] = useState('');
+            const [elapsed, setElapsed] = useState(0);
+            const [err, setErr] = useState(null);
+            const aiAbort = useRef(null);
+            const genAbort = useRef(null);
+            const cancelGen = useRef(false);
+            const lyricsRef = useRef(null);
+
+            const instrumental = kind === 'instrumental';
+            const vocalTags = instrumental ? [] : vocalTagList(vocal);
+            const apiGender = vocalTags.length && vocal.genders.length === 1 ? vocal.genders[0] : '';
+            const finalStyle = composeStyle(style, vocalTags);
+            const busy = !!ai || gen;
+            const title = deriveSongTitle(kind, lyrics, style);
+
+            useEffect(() => {
+                if (!busy) { setElapsed(0); return; }
+                const t0 = Date.now();
+                const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+                return () => clearInterval(id);
+            }, [busy]);
+
+            const toggleGender = (id) => setVocal(v => {
+                const g = v.genders.includes(id) ? v.genders.filter(x => x !== id) : [...v.genders, id];
+                return g.length ? { ...v, genders: g, range: '', traits: v.traits.filter(t => !(t === 'falsetto' && g.length === 1 && g[0] === 'f')) } : { genders: [], age: '', range: '', traits: [] };
+            });
+            const pickAge = (id) => setVocal(v => { const age = v.age === id ? '' : id; const young = ['child', 'teen'].includes(age); return { ...v, age, range: age === 'child' ? '' : v.range, traits: v.traits.filter(t => !(young && V_YOUNG_BLOCK.includes(t))) }; });
+            const pickRange = (r) => setVocal(v => ({ ...v, range: v.range === r ? '' : r }));
+            const toggleTrait = (id) => setVocal(v => v.traits.includes(id) ? { ...v, traits: v.traits.filter(t => t !== id) } : (traitBlocked(id, v) ? v : { ...v, traits: [...v.traits, id] }));
+
+            const insertTag = (tag) => {
+                const el = lyricsRef.current; const pos = el ? el.selectionStart : lyrics.length;
+                const before = lyrics.slice(0, pos), after = lyrics.slice(pos);
+                const ins = `${before && !before.endsWith('\n') ? '\n' : ''}${tag}\n`;
+                setLyricsHistory(h => [...h.slice(-19), lyrics]);
+                setLyrics(before + ins + after);
+                setTimeout(() => { if (el) { el.focus(); const c = (before + ins).length; el.setSelectionRange(c, c); } }, 0);
+            };
+            const undoLyrics = () => {
+                if (!lyricsHistory.length) return;
+                setLyrics(lyricsHistory[lyricsHistory.length - 1]);
+                setLyricsHistory(h => h.slice(0, -1));
+            };
+
+            // Tiga aksi AI (semuanya opsional): Optimalkan Style, Lirik Otomatis, Optimasi Lirik
+            const runAi = async (type) => {
+                if (busy) return;
+                const key = cleanKey(apiKeys.kie);
+                if (!key) return showToast('API Key Kie AI dibutuhkan!', 'error');
+                const st = style.trim(), ly = lyrics.trim();
+                if ((type === 'style' || type === 'write') && !st) return showToast(type === 'write' ? 'Isi style dulu, lirik dibuat sesuai style.' : 'Isi style dulu.', 'error');
+                if (type === 'polish' && !ly) return showToast('Isi lirik dulu untuk dioptimasi.', 'error');
+                const ctrl = new AbortController(); aiAbort.current = ctrl;
+                setAi(type); setErr(null);
+                try {
+                    if (type === 'style') {
+                        const raw = await kieAsk(buildSongStylePrompt(st, { tags: vocalTags, instrumental, lyrics: instrumental ? '' : lyrics }), key, ctrl.signal, 60000);
+                        const out = parseStyleResponse(raw);
+                        if (!out) throw new Error('Hasil kosong, coba ulang');
+                        setPrevStyle(style); setStyle(out.slice(0, STYLE_MAX));
+                    } else {
+                        const prompt = type === 'write' ? buildSongWritePrompt(st, { tags: vocalTags }) : buildSongPolishPrompt(ly, st);
+                        const raw = await kieAsk(prompt, key, ctrl.signal, 90000);
+                        const out = parseLyricsResponse(raw);
+                        if (!out) throw new Error('Hasil lirik kosong, coba ulang');
+                        setLyricsHistory(h => [...h.slice(-19), lyrics]);
+                        setLyrics(out.slice(0, LYRICS_MAX));
+                        setTimeout(() => { const el = lyricsRef.current; if (el) el.scrollTop = 0; }, 0);
+                    }
+                } catch (e) {
+                    if (e.cancelled) showToast('Dibatalkan', 'info');
+                    else {
+                        console.error(e);
+                        setErr({ title: type === 'style' ? 'Optimalkan style gagal' : type === 'write' ? 'Lirik otomatis gagal' : 'Optimasi lirik gagal', msg: e.message || 'Gagal menghubungi AI', raw: e.detail || '' });
+                        showToast(e.message || 'Gagal menghubungi AI', 'error');
+                    }
+                } finally {
+                    aiAbort.current = null; setAi('');
+                    setTimeout(refreshCredits, 3000);
+                }
+            };
+            const cancelAi = () => { if (aiAbort.current) aiAbort.current.abort(); };
+
+            const generate = async () => {
+                if (busy) return;
+                const key = cleanKey(apiKeys.kie);
+                if (!key) return showToast('API Key Kie AI dibutuhkan!', 'error');
+                if (!style.trim()) return showToast('Isi style dulu.', 'error');
+                if (!instrumental && !lyrics.trim()) return showToast('Isi lirik dulu, atau pilih Instrumental.', 'error');
+                if (!instrumental && lyrics.trim().length > LYRICS_MAX) return showToast(`Lirik ${lyrics.trim().length} karakter, melebihi batas ${LYRICS_MAX}.`, 'error');
+                const lyr = instrumental ? '' : lyrics.trim();
+                const sig = hash36(['song', kind, finalStyle, lyr, apiGender, duration, KIE_SUNO_MODEL].join('\u0001'));
+                const dup = lib.covers.find(c => c.sig === sig);
+                if (dup && !window.confirm('Style, lirik, dan pengaturan ini sama persis dengan lagu yang sudah ada di Library. Generate ulang tetap memakai kredit. Lanjutkan?')) { onSongDone(kind); return; }
+
+                const ctrl = new AbortController(); genAbort.current = ctrl; cancelGen.current = false;
+                const chk = () => { if (cancelGen.current) throw new Error('Dibatalkan'); };
+                const auth = { 'Authorization': `Bearer ${key}` };
+                let taskId = '';
+                setGen(true); setErr(null); setMsg('Mengirim tugas ke Suno (Kie AI)...');
+                try {
+                    const base = { customMode: true, instrumental, model: KIE_SUNO_MODEL, callBackUrl: cleanKey(apiKeys.callback) || KIE_DEFAULT_CALLBACK, title, style: finalStyle };
+                    if (!instrumental) { base.prompt = lyr; base.lyrics = lyr; if (apiGender) base.vocalGender = apiGender; }
+                    const submit = async (b) => {
+                        const res = await fetch(KIE_GEN_URL, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify(b) });
+                        return { res, j: await res.json().catch(() => ({})) };
+                    };
+                    const okTask = (r) => r.res.ok && Number(r.j.code) === 200 && r.j.data && r.j.data.taskId;
+                    let r = await submit(duration ? { ...base, duration } : base);
+                    if (!okTask(r) && duration && /duration/i.test(r.j.msg || '')) {
+                        showToast('Kie tidak menerima pengaturan durasi, dikirim tanpa durasi (otomatis).', 'info');
+                        r = await submit(base);
+                    }
+                    chk();
+                    if (!okTask(r)) throw Object.assign(new Error(`Kie AI menolak tugas: ${r.j.msg || r.j.message || 'HTTP ' + r.res.status} (code ${r.j.code || r.res.status})`), { raw: JSON.stringify(r.j).slice(0, 600) });
+                    taskId = r.j.data.taskId;
+
+                    const t0 = Date.now(); let fails = 0, polls = 0, tracks = [];
+                    const FAILED = ['CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'SENSITIVE_WORD_ERROR'];
+                    while (true) {
+                        chk();
+                        if (Date.now() - t0 > 600000) throw new Error(`Suno terlalu lama (>10 menit). Task ID: ${taskId}`);
+                        await new Promise(res => setTimeout(res, 5000)); chk();
+                        let info;
+                        try {
+                            const rr = await fetch(`${KIE_SUNO_INFO}?taskId=${encodeURIComponent(taskId)}`, { headers: auth, signal: ctrl.signal });
+                            const d = await rr.json().catch(() => ({}));
+                            if (!rr.ok || Number(d.code) !== 200) {
+                                if ([401, 402, 403].includes(rr.status) || [401, 402, 403].includes(Number(d.code))) throw Object.assign(new Error(d.msg || 'Akses ditolak'), { fatal: true });
+                                throw new Error(d.msg || `HTTP ${rr.status}`);
+                            }
+                            info = d.data || {}; fails = 0;
+                        } catch (e) {
+                            if (e.name === 'AbortError' || e.fatal || ++fails > 5) throw e;
+                            continue; // gangguan jaringan sesaat: coba lagi
+                        }
+                        const status = info.status || '';
+                        const list = (info.response && (info.response.sunoData || info.response.data)) || [];
+                        const labels = { PENDING: 'Menunggu antrean Suno', TEXT_SUCCESS: 'Suno menyusun lagu', FIRST_SUCCESS: 'Track pertama selesai, menunggu sisanya' };
+                        setMsg(`${labels[status] || 'Suno sedang membuat lagu'}... (${status || 'PENDING'}) · cek ke-${++polls}${Date.now() - t0 > 150000 ? '\nAntrean Suno padat, ini normal. Tetap dipantau, boleh tekan Batal.' : ''}`);
+                        if (status === 'SUCCESS') { tracks = list; break; }
+                        if (status === 'CALLBACK_EXCEPTION' && list.some(x => x.audio_url || x.source_audio_url)) { tracks = list; break; }
+                        if (FAILED.includes(status) || status === 'CALLBACK_EXCEPTION') {
+                            throw Object.assign(new Error(`Suno gagal: ${info.errorMessage || status}`), { raw: `status: ${status}\n${info.errorMessage || ''}` });
+                        }
+                    }
+
+                    const results = tracks.map((x, i) => ({
+                        id: x.id || i, title: x.title || `${title} ${i + 1}`,
+                        url: x.audio_url || x.source_audio_url || x.stream_audio_url || '',
+                        image: x.image_url || x.source_image_url || '', duration: x.duration
+                    })).filter(x => x.url);
+                    if (!results.length) throw new Error(`Suno selesai tapi tidak ada audio. Task ID: ${taskId}`);
+                    const stamp = Date.now();
+                    setLib(l => ({ ...l, covers: [...results.map(x => ({ ...x, id: 's' + stamp + '-' + x.id, kind: instrumental ? 'instrumental' : 'song', source: 'Buat Lagu Baru', style: style.trim(), sig, date: stamp })), ...l.covers] }));
+                    showToast(`Lagu selesai! ${results.length} versi dari Suno.`, 'success');
+                    onSongDone(kind);
+                } catch (e) {
+                    console.error(e);
+                    if (cancelGen.current || e.name === 'AbortError') showToast('Dibatalkan', 'info');
+                    else {
+                        const sens = /copyright|existing work|matches|sensitive|lyric|hak cipta/i.test(`${e.message} ${e.raw || ''}`);
+                        setErr({ title: sens ? 'Lirik/style ditolak Suno (kata sensitif atau terindikasi hak cipta)' : 'Proses gagal', msg: sens ? 'Ubah atau parafrase lirik dan style, lalu coba lagi.' : (e.message || 'Gagal generate lagu'), raw: e.raw || e.detail || (taskId ? `Task ID: ${taskId}` : '') });
+                        showToast(e.message || 'Gagal generate lagu', 'error');
+                    }
+                } finally {
+                    genAbort.current = null; setGen(false);
+                    refreshCreditsLater();
+                }
+            };
+            const cancelGenerate = () => { cancelGen.current = true; if (genAbort.current) genAbort.current.abort(); };
+
+            const aiBtn = (type, idleIcon, idleLabel, busyLabel, extra = '') => (
+                <button onClick={() => runAi(type)} disabled={busy || (type === 'polish' ? !lyrics.trim() : !style.trim())} className={`flex-1 py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-40 ${extra}`}>
+                    {ai === type ? <><i className="fa-solid fa-circle-notch fa-spin mr-2"></i>{busyLabel} {elapsed}s</> : <><i className={`fa-solid ${idleIcon} mr-2`}></i>{idleLabel}</>}
+                </button>
+            );
+            const canGenerate = !busy && style.trim() && (instrumental || lyrics.trim());
+
+            return (
+                <div className="h-full relative">
+                    <div className="h-full overflow-y-auto">
+                        <div className="p-6 flex flex-col gap-4 animate-fade-in pb-16">
+                            {/* Pilihan Vocal / Instrumental */}
+                            <div className="flex p-1 bg-dsp-panel rounded-lg border border-dsp-border">
+                                {[{ id: 'vocal', l: 'Vocal', i: 'fa-microphone-lines' }, { id: 'instrumental', l: 'Instrumental', i: 'fa-guitar' }].map(t => (
+                                    <button key={t.id} onClick={() => !busy && setKind(t.id)} disabled={busy} className={`flex-1 py-2.5 text-sm font-semibold rounded-md transition-colors ${kind === t.id ? 'bg-dsp-accent text-white' : 'text-dsp-muted hover:text-white'}`}><i className={`fa-solid ${t.i} mr-2`}></i>{t.l}</button>
+                                ))}
+                            </div>
+
+                            {/* Style */}
+                            <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-semibold flex items-center gap-2"><i className="fa-solid fa-palette text-dsp-music"></i> Style Lagu</h3>
+                                    <span className="text-[10px] font-mono text-dsp-muted">{style.length}/{STYLE_MAX}</span>
+                                </div>
+                                <p className="text-xs text-dsp-muted leading-relaxed">Tulis lagu ini mau dibuat seperti apa (genre, suasana, instrumen{instrumental ? '' : ', tema'}). Bahasa Indonesia boleh. Tombol Optimalkan bersifat opsional.</p>
+                                <textarea value={style} onChange={e => setStyle(e.target.value)} readOnly={ai === 'style'} rows={3} maxLength={STYLE_MAX} placeholder={instrumental ? 'mis. musik santai kafe, piano dan gitar akustik, tempo pelan' : 'mis. lagu anak ceria tentang hujan, akustik, tempo sedang'} className="w-full bg-dsp-bg border border-dsp-border rounded-lg p-3 text-sm text-dsp-text focus:border-dsp-music outline-none resize-y" />
+                                <div className="flex items-center gap-3">
+                                    {aiBtn('style', 'fa-wand-magic-sparkles', 'Optimalkan Style', 'Mengoptimalkan...', 'bg-dsp-ai text-white')}
+                                    {prevStyle !== null && !busy && <button onClick={() => { setStyle(prevStyle); setPrevStyle(null); }} className="text-[11px] font-mono text-dsp-accent">Urungkan</button>}
+                                    {ai === 'style' && <button onClick={cancelAi} className="text-[11px] font-mono text-dsp-muted hover:text-white">Batal</button>}
+                                </div>
+                            </div>
+
+                            {/* Vokal (hanya mode Vocal) */}
+                            {!instrumental && (
+                                <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-3">
+                                    <div className="text-[11px] font-mono text-dsp-muted">VOKAL (otomatis masuk ke depan style, tanpa AI)</div>
+                                    <div>
+                                        <div className="text-[11px] text-dsp-muted mb-1.5">Jenis suara. Pilih keduanya untuk duet.</div>
+                                        <div className="flex gap-2">{[{ id: 'f', l: 'Wanita' }, { id: 'm', l: 'Pria' }].map(o => <Chip key={o.id} on={vocal.genders.includes(o.id)} onClick={() => toggleGender(o.id)}>{o.l}</Chip>)}</div>
+                                    </div>
+                                    {vocal.genders.length > 0 && (<>
+                                        <div>
+                                            <div className="text-[11px] text-dsp-muted mb-1.5">Usia suara</div>
+                                            <div className="flex flex-wrap gap-2">{VOCAL_AGES.map(a => <Chip key={a.id} on={vocal.age === a.id} onClick={() => pickAge(a.id)}>{a.l}</Chip>)}</div>
+                                        </div>
+                                        {vocal.genders.length === 1 && vocal.age !== 'child' && (
+                                            <div>
+                                                <div className="text-[11px] text-dsp-muted mb-1.5">Rentang suara</div>
+                                                <div className="flex flex-wrap gap-2">{VOCAL_RANGES[vocal.genders[0]].map(r => <Chip key={r} on={vocal.range === r} onClick={() => pickRange(r)}>{r}</Chip>)}</div>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <div className="text-[11px] text-dsp-muted mb-1.5">Karakter suara (maks 2; yang bertentangan dikunci)</div>
+                                            <div className="flex flex-wrap gap-2">{VOCAL_TRAITS.map(t => <Chip key={t.id} on={vocal.traits.includes(t.id)} disabled={traitBlocked(t.id, vocal)} onClick={() => toggleTrait(t.id)}>{t.l}</Chip>)}</div>
+                                        </div>
+                                    </>)}
+                                </div>
+                            )}
+
+                            {/* Lirik (hanya mode Vocal) */}
+                            {!instrumental && (
+                                <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-3">
+                                    <h3 className="font-semibold flex items-center gap-2"><i className="fa-solid fa-pen-nib text-dsp-ai"></i> Lirik</h3>
+                                    <p className="text-xs text-dsp-muted leading-relaxed">Ketik atau tempel liriknya, atau minta AI. <b>Lirik Otomatis</b> menulis lirik baru sesuai style. <b>Optimasi Lirik</b> memoles lirik yang sudah ada. Hasilnya langsung masuk ke kolom ini dan bisa diedit. Keduanya opsional.</p>
+                                    <div className="flex gap-1.5 overflow-x-auto hide-scroll">{SONG_TAGS.map(t => (<button key={t} onClick={() => insertTag(t)} className="shrink-0 px-2.5 py-1.5 rounded-md border border-dsp-border text-[11px] font-mono text-dsp-muted hover:text-white">{t}</button>))}</div>
+                                    <textarea ref={lyricsRef} value={lyrics} onChange={e => setLyrics(e.target.value)} readOnly={ai === 'write' || ai === 'polish'} spellCheck={false} placeholder="Ketik atau tempel lirik di sini. Beri label seperti [Verse 1] dan [Chorus] agar hasil Suno lebih rapi." className="w-full bg-dsp-bg rounded-lg border border-dsp-border p-4 text-sm leading-relaxed text-dsp-text focus:outline-none focus:border-dsp-ai font-mono whitespace-pre-wrap resize-y min-h-[260px]" />
+                                    <div className="flex items-center justify-between gap-3 text-[11px] font-mono text-dsp-muted -mt-1">
+                                        <span className={lyrics.length > LYRICS_MAX ? 'text-amber-300' : ''}>{lyrics.trim() ? lyrics.trim().split(/\n/).length : 0} baris · {lyrics.length}/{LYRICS_MAX} karakter</span>
+                                        <button onClick={undoLyrics} disabled={!lyricsHistory.length || busy} className={!lyricsHistory.length || busy ? 'opacity-40' : 'text-dsp-accent hover:underline'}><i className="fa-solid fa-rotate-left mr-1"></i>Urungkan</button>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        {aiBtn('write', 'fa-feather-pointed', 'Lirik Otomatis', 'Menulis...', 'bg-dsp-ai text-white')}
+                                        {aiBtn('polish', 'fa-gem', 'Optimasi Lirik', 'Memoles...', 'border border-dsp-ai text-dsp-ai')}
+                                    </div>
+                                    {ai === 'write' || ai === 'polish' ? <button onClick={cancelAi} className="self-start text-[11px] font-mono text-dsp-muted hover:text-white">Batal</button> : null}
+                                </div>
+                            )}
+
+                            {/* Durasi */}
+                            <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-3">
+                                <h3 className="font-semibold flex items-center gap-2"><i className="fa-solid fa-clock text-dsp-accent"></i> Durasi</h3>
+                                <div className="flex flex-wrap gap-2">{SONG_DURATIONS.map(d => <Chip key={d} on={duration === d} onClick={() => !busy && setDuration(d)}>{d === 0 ? 'Otomatis' : formatTime(d)}</Chip>)}</div>
+                                <p className="text-[11px] text-dsp-muted leading-relaxed">Otomatis = Suno yang menentukan panjang lagu. Durasi tetap bersifat permintaan ke Suno (model V6), hasil akhir bisa sedikit berbeda.</p>
+                            </div>
+
+                            {/* Ringkasan + Generate */}
+                            <div className="bg-dsp-panel border border-dsp-border rounded-xl p-5 flex flex-col gap-3">
+                                <div className="p-3 bg-dsp-bg border border-dsp-border rounded-lg flex flex-col gap-1.5 text-[11px] font-mono break-words select-text">
+                                    <div className="flex justify-between gap-3"><span className="text-dsp-muted">Jenis</span><span>{instrumental ? 'Instrumental' : 'Vocal'}</span></div>
+                                    <div className="flex justify-between gap-3"><span className="text-dsp-muted">Judul otomatis</span><span className="text-right">{title}</span></div>
+                                    <div className="flex justify-between gap-3"><span className="text-dsp-muted">Durasi</span><span>{duration === 0 ? 'Otomatis' : formatTime(duration)}</span></div>
+                                    <div className="text-dsp-muted pt-1">Style akhir yang dikirim ({finalStyle.length}/{STYLE_MAX})</div>
+                                    <div className="text-dsp-text">{finalStyle || '-'}</div>
+                                    {vocal.genders.length === 2 && !instrumental && <div className="text-[10px] text-dsp-muted">Duet: parameter vokal Kie hanya m/f, jadi duet diatur lewat tag style.</div>}
+                                </div>
+                                {err && (
+                                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 p-3 text-xs">
+                                        <div className="font-semibold mb-1"><i className="fa-solid fa-triangle-exclamation mr-1"></i>{err.title}</div>
+                                        <div className="leading-relaxed">{err.msg}</div>
+                                        {err.raw && <pre className="mt-2 font-mono text-[10px] opacity-80 whitespace-pre-wrap break-words select-text">{err.raw}</pre>}
+                                        <button onClick={() => { try { navigator.clipboard.writeText(`${err.title}\n${err.msg}\n${err.raw || ''}`); showToast('Detail error disalin', 'success'); } catch (e) {} }} className="mt-2 underline">Salin detail error</button>
+                                    </div>
+                                )}
+                                <button onClick={generate} disabled={!canGenerate} className="w-full disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-dsp-music to-dsp-accent text-white py-3.5 rounded-xl font-bold shadow-[0_4px_20px_rgba(16,185,129,0.3)]"><i className="fa-solid fa-bolt mr-2"></i>{instrumental ? 'Generate Music Instrumental' : 'Generate Lagu'}</button>
+                                {!style.trim() && <p className="text-center text-[11px] font-mono text-amber-300">Isi style dulu sebelum Generate.</p>}
+                                {style.trim() && !instrumental && !lyrics.trim() && <p className="text-center text-[11px] font-mono text-amber-300">Isi lirik dulu (ketik, tempel, atau Lirik Otomatis), atau pilih Instrumental.</p>}
+                                <p className="text-center text-[10px] text-dsp-muted font-mono">Biasanya 1-3 menit; saat antrean padat bisa lebih lama. Hasil masuk ke Library ({instrumental ? 'Generate Music Instrumental' : 'Generate Lagu'}).</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {gen && (
+                        <div className="absolute inset-0 bg-dsp-bg/90 backdrop-blur-sm z-40 flex flex-col items-center justify-center animate-fade-in px-6 text-center">
+                            <i className="fa-solid fa-circle-notch fa-spin text-4xl text-dsp-accent mb-4"></i>
+                            <p className="font-mono text-sm text-dsp-text break-words max-w-full whitespace-pre-line">{msg}</p>
+                            <p className="font-mono text-xs text-dsp-muted mt-2">Berjalan {elapsed} dtk</p>
+                            <button onClick={cancelGenerate} className="mt-6 px-5 py-2.5 rounded-lg border border-dsp-border text-sm font-medium text-dsp-text hover:bg-dsp-panelHover transition-colors">Batal</button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function Chip({ on, disabled, onClick, children }) {
+            return <button type="button" disabled={disabled} onClick={onClick} className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors ${on ? 'bg-dsp-music border-dsp-music text-white' : 'border-dsp-border text-dsp-muted hover:text-white'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>{children}</button>;
+        }
+
+        function SpectrumVisualizer({ engine, isPlaying }) {
+            const canvasRef = useRef(null);
+            useEffect(() => {
+                if(!engine || !engine.ctx) return;
+                const canvas = canvasRef.current; const ctx = canvas.getContext('2d');
+                const vAnalyser = engine.vocalAnalyser; const mAnalyser = engine.musicAnalyser;
+                if(!vAnalyser || !mAnalyser) return;
+                
+                const bufferLength = vAnalyser.frequencyBinCount;
+                const vData = new Uint8Array(bufferLength); const mData = new Uint8Array(bufferLength);
+                let req;
+                
+                const drawCurve = (dataArray, color, fillStyle) => {
+                    ctx.beginPath(); ctx.moveTo(0, canvas.height);
+                    const sliceWidth = canvas.width * 1.0 / (bufferLength / 1.5);
+                    let x = 0;
+                    for(let i = 0; i < bufferLength; i++) {
+                        const v = dataArray[i] / 255.0;
+                        const y = canvas.height - (v * canvas.height * 0.9);
+                        if(i === 0) ctx.lineTo(x, y);
+                        else {
+                            const prevV = dataArray[i-1] / 255.0;
+                            const prevY = canvas.height - (prevV * canvas.height * 0.9);
+                            const xc = (x - sliceWidth + x) / 2; const yc = (prevY + y) / 2;
+                            ctx.quadraticCurveTo(x - sliceWidth, prevY, xc, yc);
+                        }
+                        x += sliceWidth;
+                    }
+                    ctx.lineTo(canvas.width, canvas.height); ctx.lineTo(0, canvas.height);
+                    ctx.fillStyle = fillStyle; ctx.fill();
+                    ctx.lineWidth = 1.5; ctx.strokeStyle = color; ctx.stroke();
+                };
+
+                const render = () => {
+                    req = requestAnimationFrame(render);
+                    vAnalyser.getByteFrequencyData(vData); mAnalyser.getByteFrequencyData(mData);
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    const vGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                    vGrad.addColorStop(0, 'rgba(236, 72, 153, 0.5)'); vGrad.addColorStop(1, 'rgba(236, 72, 153, 0.0)');
+                    const mGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                    mGrad.addColorStop(0, 'rgba(16, 185, 129, 0.5)'); mGrad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+                    drawCurve(mData, '#10b981', mGrad); drawCurve(vData, '#ec4899', vGrad);
+                };
+                render();
+                return () => cancelAnimationFrame(req);
+            }, [engine, isPlaying]);
+
+            return <canvas ref={canvasRef} width="400" height="150" className="w-full h-full absolute inset-0"></canvas>;
+        }
+
+        function TrackCard({ title, type, state, onVolume, onMute, onDistortion }) {
+            const isVocal = type === 'vocal';
+            const accentHex = isVocal ? '#ec4899' : '#10b981';
+            const accentClass = isVocal ? 'text-dsp-vocal' : 'text-dsp-music';
+            const toggleClass = isVocal ? 'toggle-vocal' : 'toggle-music';
+
+            return (
+                <div className="bg-dsp-panel border border-dsp-border rounded-xl p-4 flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                            <i className={`fa-solid fa-layer-group ${accentClass} text-sm`}></i>
+                            <span className="font-semibold text-sm tracking-wide text-white">{title}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-dsp-muted">MUTE</span>
+                            <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" checked={state.muted} onChange={onMute} className={`toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-dsp-border appearance-none cursor-pointer z-10 transition-all duration-300 ${toggleClass}`} style={{ top: '2px', left: '2px' }}/>
+                                <label className="toggle-label block overflow-hidden h-6 rounded-full bg-dsp-bg border border-dsp-border cursor-pointer transition-colors duration-300"></label>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <i className={`fa-solid fa-volume-low text-xs ${state.muted ? 'text-red-500/50' : 'text-dsp-muted'}`}></i>
+                        <div className="flex-1 relative flex items-center">
+                            <input type="range" min="0" max="1.5" step="0.05" value={state.volume} onChange={(e) => onVolume(parseFloat(e.target.value))} className={`slider-${type} relative z-10 w-full`} />
+                            <div className="absolute left-0 h-1 rounded-l-full pointer-events-none" style={{ width: `${(state.volume / 1.5) * 100}%`, backgroundColor: accentHex, top: '50%', transform: 'translateY(-50%)' }}></div>
+                        </div>
+                    </div>
+                    <div className="pt-2 border-t border-dsp-border/50">
+                        <div className="text-[10px] font-mono text-dsp-muted mb-2 uppercase">DSP Module</div>
+                        <div className="flex bg-dsp-bg p-1 rounded-lg border border-dsp-border">
+                            {[ { id: 'low', label: 'Drive' }, { id: 'medium', label: 'Fuzz' }, { id: 'hard', label: 'Crush' } ].map(btn => {
+                                const active = state.activeLevel === btn.id;
+                                return (
+                                    <button 
+                                        key={btn.id} onClick={() => onDistortion(btn.id)}
+                                        className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? (isVocal ? 'bg-dsp-vocal text-white' : 'bg-dsp-music text-white') : 'text-dsp-muted hover:text-dsp-text'}`}
+                                    >{btn.label}</button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
